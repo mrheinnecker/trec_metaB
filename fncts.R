@@ -7,14 +7,18 @@ load_required_tables <- function(){
   
   trec_id_mapping <- read_csv("/g/schwab/Chandni/MetaB_AML_40um/TREC_Plankton_MetaB_TRECAML_40um_dataset_files_export.csv") %>%
     mutate(
-      sample=str_split(Name, "_") %>% map_chr(.,1)
+      sample=str_split(Name, "_") %>% map_chr(.,1),
+      trec_name=str_replace_all(Samples, "SAMEA", "TREC")
     ) %>%
-    select(err_id=sample, trec_id=Samples) %>%
+    select(err_id=sample, trec_id=Samples, trec_name) %>%
     unique()
   
   
   input_samples <- read_tsv("/g/schwab/Marco/projects/trec_metaB/trec_metaB_site_table - Sheet1.tsv")%>%
     mutate(trec_id=paste0("SAMEA", Barcode_ID))
+  
+  
+  error_samples <- read_xlsx("/g/schwab/Marco/projects/trec_metaB/ErroneousReadset_ToRemove.xlsx")
   
   site_order <- c("Villefranche","Reykjavik","Roscoff", "Tallinn","Kristineberg", "Bilbao","Porto")
   
@@ -29,13 +33,18 @@ load_required_tables <- function(){
       ) %>% factor(., levels=site_order),
     )
   
-  
+  max_cols <- max(stringr::str_count(df_asvs$pr2_dada2_taxonomy, ";"), na.rm=T) + 1
   return(
     list(
       mapping=mapping,
-      df_asvs=df_asvs,
+      df_asvs=df_asvs %>%
+        separate_wider_delim(pr2_dada2_taxonomy, delim = ";", 
+                             names = paste0("level_", 1:max_cols), 
+                             too_few = "align_start"),
       input_samples=input_samples,
-      site_mapping=site_mapping
+      site_mapping=site_mapping,
+      trec_id_mapping=trec_id_mapping,
+      error_samples=error_samples
     )
   )
   
@@ -43,13 +52,9 @@ load_required_tables <- function(){
 
 get_main_dataset <- function(df_asvs, site_mapping, mapping){
   
-  max_cols <- max(stringr::str_count(df_asvs$pr2_dada2_taxonomy, ";"), na.rm=T) + 1
+ 
   
-  taxo_anno <- df_asvs %>%
-    select(asv_id, pr2_dada2_taxonomy) %>%
-    separate_wider_delim(pr2_dada2_taxonomy, delim = ";", 
-                         names = paste0("level_", 1:max_cols), 
-                         too_few = "align_start")
+  taxo_anno <- df_asvs 
   
   
   
