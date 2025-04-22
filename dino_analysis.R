@@ -88,14 +88,19 @@ mx_frac <- max(plot_data$frac)
 
 legend_scale <- c(0,0.01,0.05,0.1,round(mx_frac*20)/20)
 
+site_count <- dino_asv_per_sample %>% group_by(asv_id) %>% 
+  summarise(all_sites=paste(unique(site), collapse = ";"),
+            n_sites=length(unique(site)))
+
 asv_sorter <- plot_data %>%
   group_by(asv_id) %>%
   summarize(
-    n_sites=length(unique(site[which(frac>0)])),
+    #n_sites=length(unique(site[which(frac>0)])),
     mn=mean(frac),
     md=median(frac),
     sm=sum(frac)
   ) %>%
+  left_join(site_count) %>%
   arrange(desc(md))
 
 
