@@ -1,4 +1,5 @@
-
+library(tidyverse)
+library(readxl)
 
 
 source("/g/schwab/Marco/repos/trec_metaB/fncts.R")
@@ -43,7 +44,10 @@ dino_asv_per_sample <- asv_frac_per_sample %>%
 
 dino_high_abundance <- dino_asv_per_sample %>%
   ## keep only dinos that have at leat once (in one sample) and abundance higher than 1 %
-  filter(frac>0.01)
+  filter(frac>0.01)%>%
+  rowwise() %>%
+  mutate(n_na_levels = sum(is.na(c_across(starts_with("level_"))))) %>%
+  ungroup()
   
   
   
@@ -75,7 +79,8 @@ plot_data <- full_grid %>%
       select(sample, asv_id, frac),
     by = c("sample", "asv_id")
   ) %>%
-  mutate(frac = replace_na(frac, 0))
+  mutate(frac = replace_na(frac, 0)) %>%
+  as_tibble()
 
 
 
@@ -83,16 +88,25 @@ mx_frac <- max(plot_data$frac)
 
 legend_scale <- c(0,0.01,0.05,0.1,round(mx_frac*20)/20)
 
+asv_sorter <- plot_data %>%
+  group_by(asv_id) %>%
+  summarize(
+    n_sites=length(unique(site[which(frac>0)])),
+    mn=mean(frac),
+    md=median(frac),
+    sm=sum(frac)
+  ) %>%
+  arrange(desc(md))
 
 
-ggplot(plot_data)+
+hm <- ggplot(plot_data %>% mutate(asv_id=factor(asv_id, levels=rev(asv_sorter$asv_id))))+
   geom_tile(
     aes(x=sample, y=asv_id, fill=as.numeric(frac)),
     #show.legend = F
   )+
-  facet_grid("1"~site, scales = "free_x", space = "free")+
+  facet_grid(~site, scales = "free_x", space = "free")+
   scale_fill_gradientn(
-    name="abundance",
+    name="abundance [%]",
     values=c(0,
              0.001/mx_frac,
              0.0099/mx_frac,
@@ -103,12 +117,14 @@ ggplot(plot_data)+
              0.1/mx_frac,
              1),
     breaks=legend_scale,
-    labels=paste(legend_scale*100, "%"),
-    colors = c("black","blue4","blue3","green4","green","yellow","orange", "orangered")
+    labels=paste(legend_scale*100),
+    colors = c("black","blue4","blue3","green4","green","yellow","pink", "deeppink")
   )+
-  scale_y_discrete(breaks=dino_high_abundance$asv_id, labels=dino_high_abundance$level_8)+
+  scale_y_discrete(name="ASV genus",
+                   breaks=dino_high_abundance$asv_id, labels=dino_high_abundance$level_8)+
   theme_bw()+
   theme(
+    legend.position = "bottom",
     axis.text.x = element_blank(),
     axis.ticks.x = element_blank()
   )
@@ -116,9 +132,43 @@ ggplot(plot_data)+
 
 
 
+site_count_plot <- 
+  ggplot(asv_sorter %>% 
+           left_join(dino_high_abundance %>% select(asv_id, n_na_levels) %>% unique()) %>%
+           mutate(asv_id=factor(asv_id, levels=rev(asv_sorter$asv_id))), 
+         aes(y=asv_id, x=n_sites, fill=as.character(n_na_levels))) +
+  geom_bar(stat="identity", #fill="lightblue"
+           show.legend = T
+           ) +
+ # facet_wrap(~1)+
+  #coord_flip() +
+  theme_bw() +
+  scale_fill_manual(
+    name="annotation",
+    breaks=as.character(c(0:7)),
+                      values=c("purple4","purple", "deeppink", "red", "orange", "orange4", "brown", "black"),
+                      labels=c("species", "genus", "family", "order", "class", "phylum", "kingdom", "domain"))+
+  scale_y_discrete(breaks=dino_high_abundance$asv_id, labels=dino_high_abundance$level_8)+
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.title.y = element_blank()
+  )
 
+# Now use cowplot::plot_grid to combine the heatmap and the site count plot
+combined_plot <- 
+  plot_grid(
+    rel_widths = c(1,0.25),
+  hm,           # Your original heatmap plot
+  site_count_plot,  # The plot with total number of sites per ASV
+  align = "h",  # Align plots horizontally
+  ncol = 2,      # Arrange them in 2 columns
+  axis = "bt"
+)
 
-
+pdf(file="/g/schwab/Marco/projects/trec_metaB/dinos_per_sample.pdf", width=12, height=7)
+print(combined_plot)
+dev.off()
 
 
 tot_reads_per_site <- data %>%
