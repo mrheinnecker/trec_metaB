@@ -1,4 +1,144 @@
 
+asv_overview_per_sample <- function(asv_frac_per_sample, dino_high_abundance, y_annotation="level_2"){
+  
+  
+  annotations <- tibble(
+    
+    level=c(0:8),
+    name=paste("level", c(9:1), sep="_"),
+    colors=c("purple4","purple", "deeppink", "red", "orange", "orange4", "brown","brown4", "black"),
+    labels=c("species", "genus", "family", "order","class", "subdivision", "division", "supergroup", "domain")
+    
+  )
+  
+  
+  rel_asvs_full <- asv_frac_per_sample %>%
+    filter(asv_id %in% dino_high_abundance$asv_id)
+  # First, get the list of all relevant samples and their sites
+  sample_site_map <- rel_asvs_full %>%
+    select(sample, site) %>%
+    distinct()
+  
+  # Then, create the full grid
+  full_grid <- expand.grid(
+    sample = unique(sample_site_map$sample),
+    asv_id = unique(dino_high_abundance$asv_id),
+    stringsAsFactors = FALSE
+  ) %>%
+    left_join(sample_site_map, by = "sample")
+  
+  # Then join the original data and fill NAs with 0
+  plot_data <- full_grid %>%
+    left_join(
+      rel_asvs_full %>% 
+        filter(asv_id %in% dino_high_abundance$asv_id) %>%
+        select(sample, asv_id, frac, level_4),
+      by = c("sample", "asv_id")
+    ) %>%
+    mutate(frac = replace_na(frac, 0)) %>%
+    as_tibble()
+  
+  
+  
+  mx_frac <- max(plot_data$frac)
+  
+  legend_scale <- c(0,0.01,0.05,0.1,round(mx_frac*20)/20)
+  
+  site_count <- rel_asvs_full %>% group_by(asv_id) %>% 
+    summarise(all_sites=paste(unique(site), collapse = ";"),
+              n_sites=length(unique(site)))
+  
+  asv_sorter <- plot_data %>%
+    group_by(asv_id) %>%
+    summarize(
+      #n_sites=length(unique(site[which(frac>0)])),
+      mn=mean(frac),
+      md=median(frac),
+      sm=sum(frac)
+    ) %>%
+    left_join(site_count) %>%
+    arrange(desc(md))
+  
+  
+  hm <- ggplot(plot_data %>% mutate(asv_id=factor(asv_id, levels=rev(asv_sorter$asv_id))))+
+    geom_tile(
+      aes(x=sample, y=asv_id, fill=as.numeric(frac)),
+      #show.legend = F
+    )+
+    facet_grid(~site, scales = "free_x", space = "free")+
+    scale_fill_gradientn(
+      name="abundance [%]",
+      values=c(0,
+               0.001/mx_frac,
+               0.0099/mx_frac,
+               0.01/mx_frac,
+               0.0499/mx_frac,
+               0.05/mx_frac,
+               0.0999/mx_frac,
+               0.1/mx_frac,
+               1),
+      breaks=legend_scale,
+      labels=paste(legend_scale*100),
+      colors = c("black","blue4","blue3","green4","green","yellow","pink", "deeppink")
+    )+
+    scale_y_discrete(name=paste0("ASV [", annotations[which(annotations$name==y_annotation),]$labels, "]"),
+                     breaks=dino_high_abundance$asv_id, labels=dino_high_abundance[[y_annotation]])+
+    theme_bw()+
+    theme(
+      legend.position = "bottom",
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank()
+    )
+  
+  
+  annotation_data <- dino_high_abundance %>%
+    rowwise() %>%
+    mutate(n_na_levels = sum(is.na(c_across(starts_with("level_"))))) %>%
+    ungroup()
+  
+  
+  site_count_plot <- 
+    ggplot(asv_sorter %>% 
+             left_join(annotation_data %>% select(asv_id, n_na_levels) %>% unique()) %>%
+             mutate(asv_id=factor(asv_id, levels=rev(asv_sorter$asv_id))), 
+           aes(y=asv_id, x=n_sites, fill=as.character(n_na_levels))) +
+    geom_bar(stat="identity", #fill="lightblue"
+             show.legend = T
+    ) +
+    #facet_grid(level_4~, scales = "free", space = "free")+
+    # facet_wrap(~1)+
+    #coord_flip() +
+    theme_bw() +
+    scale_fill_manual(
+      name="annotation",
+      breaks=annotations$level,
+      values=annotations$colors,
+      labels=annotations$labels)+
+    scale_y_discrete(breaks=dino_high_abundance$asv_id, labels=dino_high_abundance[[y_annotation]])+
+    theme(
+      axis.text.y = element_blank(),
+      axis.ticks.y = element_blank(),
+      axis.title.y = element_blank()
+    )
+  
+  # Now use cowplot::plot_grid to combine the heatmap and the site count plot
+  combined_plot <- 
+    plot_grid(
+      rel_widths = c(1,0.25),
+      hm,           # Your original heatmap plot
+      site_count_plot,  # The plot with total number of sites per ASV
+      align = "h",  # Align plots horizontally
+      ncol = 2,      # Arrange them in 2 columns
+      axis = "bt"
+    )
+  
+  return(combined_plot)
+  
+}
+
+
+
+
 load_required_tables <- function(){
   
   mapping <- read_tsv("/g/schwab/Chandni/MetaB_AML_40um/v2/trec-aml-ssuv4v5_dada2_counts.tsv.gz")
