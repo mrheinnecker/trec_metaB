@@ -72,10 +72,15 @@ full_plot <- asv_overview_per_sample(asv_frac_per_sample, euk_high_abundance, eu
 
 
 
-pdf(file="/g/schwab/Marco/projects/trec_metaB/dinos_per_sample.pdf", width=12, height=7)
-print(combined_plot)
+pdf(file="/g/schwab/Marco/projects/trec_metaB/dinos_per_sample.pdf", width=14, height=7)
+print(dino_plot)
 dev.off()
 
+
+
+pdf(file="/g/schwab/Marco/projects/trec_metaB/euk_per_sample.pdf", width=14, height=12)
+print(full_plot)
+dev.off()
 
 
 

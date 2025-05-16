@@ -46,7 +46,7 @@ asv_overview_per_sample <- function(asv_frac_per_sample, dino_high_abundance, tr
    
   
   if(mx_frac>0.2){
-    color_vec <- c("black","blue4","blue3","green4","green","yellow","pink", "deeppink","darkcyan","cyan")
+    color_vec <- c("black","blue4","blue3","darkcyan","green4","green","yellow4","yellow","pink", "deeppink")
     val_vec <- c(0,
                  0.001/mx_frac,
                  0.0099/mx_frac,
@@ -59,7 +59,7 @@ asv_overview_per_sample <- function(asv_frac_per_sample, dino_high_abundance, tr
                  0.2/mx_frac,
                  1)
   } else {
-    color_vec <- c("black","blue4","blue3","green4","green","yellow","pink", "deeppink")
+    color_vec <- c("black","blue4","blue3","darkcyan","green4","green","yellow4","yellow")
     val_vec <- c(0,
                  0.001/mx_frac,
                  0.0099/mx_frac,
