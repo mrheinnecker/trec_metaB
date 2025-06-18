@@ -7,10 +7,9 @@ library(ape)
 library(phangorn)
 library(ggtree)
 
-source("/g/schwab/Marco/repos/trec_metaB/fncts.R")
+source("/g/schwab/marco/repos/trec_metaB/fncts.R")
 
 input_tables <- load_required_tables()
-
 #data <- get_main_dataset(input_tables$df_asvs, input_tables$site_mapping, input_tables$mapping) %>%
  # mutate(level_0=str_extract(level_1, "Bacteria|Eukaryota|Archaea")) 
 
@@ -53,7 +52,10 @@ dino_high_abundance <- dino_asv_per_sample %>%
 
 dino_tree <- construct_phylogeny(dino_high_abundance, input_tables$df_asvs)  
   
-dino_plot <- asv_overview_per_sample(asv_frac_per_sample, dino_high_abundance, dino_tree, y_annotation="level_6")
+dino_plot <- asv_overview_per_sample(asv_frac_per_sample, 
+                                     dino_high_abundance, 
+                                     dino_tree, 
+                                     y_annotation="level_9")
 
 
 
@@ -72,13 +74,13 @@ full_plot <- asv_overview_per_sample(asv_frac_per_sample, euk_high_abundance, eu
 
 
 
-pdf(file="/g/schwab/Marco/projects/trec_metaB/dinos_per_sample.pdf", width=14, height=7)
+pdf(file="/g/schwab/marco/projects/trec_metaB/dinos_per_sample.pdf", width=14, height=7)
 print(dino_plot)
 dev.off()
 
 
 
-pdf(file="/g/schwab/Marco/projects/trec_metaB/euk_per_sample.pdf", width=14, height=12)
+pdf(file="/g/schwab/marco/projects/trec_metaB/euk_per_sample.pdf", width=14, height=12)
 print(full_plot)
 dev.off()
 

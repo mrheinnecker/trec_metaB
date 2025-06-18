@@ -259,11 +259,11 @@ load_required_tables <- function(){
     unique()
   
   
-  input_samples <- read_tsv("/g/schwab/Marco/projects/trec_metaB/trec_metaB_site_table - Sheet1.tsv")%>%
+  input_samples <- read_tsv("/g/schwab/marco/projects/trec_metaB/trec_metaB_site_table - Sheet1.tsv")%>%
     mutate(trec_id=paste0("SAMEA", Barcode_ID))
   
   
-  error_samples <- read_xlsx("/g/schwab/Marco/projects/trec_metaB/ErroneousReadset_ToRemove.xlsx")
+  error_samples <- read_xlsx("/g/schwab/marco/projects/trec_metaB/ErroneousReadset_ToRemove.xlsx")
   
   site_order <- c("Villefranche","Reykjavik","Roscoff", "Tallinn","Kristineberg", "Bilbao","Porto")
   
@@ -330,8 +330,12 @@ prepare_stacked_barplot_data <- function(df_asvs, site_mapping, mapping){
   
   
   plot_data <- get_main_dataset(df_asvs, site_mapping, mapping) %>%
-    pivot_longer(cols = c("level_1"),
+    filter(level_1=="Eukaryota") %>%
+    pivot_longer(cols = c("level_2"),
                  names_to = "level", values_to = "taxo") %>%
+    
+    
+    
     ungroup()
   
   

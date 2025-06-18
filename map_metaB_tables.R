@@ -9,6 +9,50 @@ source("/g/schwab/Marco/repos/trec_metaB/fncts.R")
 
 input_tables <- load_required_tables()
 
+chandni_biobank_table <- read_tsv("/g/schwab/marco/projects/trec_metaB/TREC_STARDUST_Biobank_v1.xlsx - MetaB.tsv")
+
+## prepare tables for Flora and AML people
+
+df_asv_per_sample <- input_tables$mapping %>%
+  
+  left_join(input_tables$trec_id_mapping,
+            by=c("sample"="err_id")) %>%
+  
+  filter(
+    !trec_name %in% input_tables$error_samples$`Ref. collaborateur`
+  ) %>%
+  mutate(sample_id=str_replace_all(trec_name, "TREC", "")) %>%
+  select(asv_id, nreads, sample_id)
+
+
+df_sampling_sites <- input_tables$trec_id_mapping %>%
+  filter(
+    !trec_name %in% input_tables$error_samples$`Ref. collaborateur`
+  )%>%
+  left_join(input_tables$site_mapping) %>%
+  mutate(sample_id=str_replace_all(trec_name, "TREC", ""))  %>%
+  left_join(
+    chandni_biobank_table %>% mutate(sample_id=as.character(`Barcode ID`)),
+    #by=c("sample_id"="Barcode ID")
+  )%>%
+  select(sample_id, genoscope_id=err_id, trec_name, samea_name=trec_id, site,
+         date=Date, time=Time, size_fraction=Fraction, TARA, depth_m="Depth (m)")
+
+
+df_asv_taxonomy <- input_tables$df_asvs %>%
+  filter(asv_id %in% df_asv_per_sample$asv_id) %>%
+  select(-total, -spread)
+
+
+
+write_tsv(df_asv_per_sample, file="/g/schwab/marco/projects/trec_metaB/prepared_input/asvs_per_sample.tsv")
+
+write_tsv(df_asv_taxonomy, file="/g/schwab/marco/projects/trec_metaB/prepared_input/asv_taxonomy.tsv")
+
+write_tsv(df_sampling_sites, file="/g/schwab/marco/projects/trec_metaB/prepared_input/sampling_sites.tsv")
+
+
+
 ## case 1: get all asvs found in two samples (add/remove for more or less)
 SAMPLE_OI <- c("ERR14106000", "ERR14106001") 
 
