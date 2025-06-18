@@ -1,7 +1,6 @@
-# Install packages if not already installed
-# install.packages(c("ggplot2", "rnaturalearth", "rnaturalearthdata", "sf"))
-
-library(ggplot2)
+library(grid)
+library(tidyverse)
+library(readxl)
 library(rnaturalearth)
 library(rnaturalearthdata)
 library(sf)
@@ -9,26 +8,18 @@ library(grid)  # for grobs
 library(gridExtra)  # just in case
 library(maps)
 
-source("/g/schwab/Marco/repos/trec_metaB/fncts.R")
+source("/g/schwab/marco/repos/trec_metaB/fncts.R")
 
 
 input_tables <- load_required_tables()
 
 p_list=lapply(sort(input_tables$site_mapping$site %>% unique()), 
-       get_stacked_barplot_per_site, 
-       df_asvs=input_tables$df_asvs, 
-       site_mapping=input_tables$site_mapping,
-       mapping=input_tables$mapping)
+              get_stacked_barplot_per_site, 
+              df_asvs=input_tables$df_asvs, 
+              site_mapping=input_tables$site_mapping,
+              mapping=input_tables$mapping)
 
 
-# Example: filter for a specific city
-
-
-all_sites <- c(sort(input_tables$site_mapping$site %>% unique()))
-             #  'Roscoff', 'Tallinn', 'Kristineberg', 'Bilbao', 'Porto', 
-             #   'Barcelona', 
-            #   'Naples', 'Athens')  %>% unique()
-data(world.cities)
 
 cities <- subset(world.cities, name %in% all_sites) %>%
   select(name, lat, lon=long) %>%
@@ -43,59 +34,81 @@ cities <- subset(world.cities, name %in% all_sites) %>%
   arrange(name)
 
 
+cities_sf <- st_as_sf(cities, coords = c("lon", "lat"), crs = 4326)
+cities_proj <- st_transform(cities_sf, crs = ortho_crs)
+
+# Extract projected coordinates
+coords <- st_coordinates(cities_proj)
+cities_coords <- cbind(cities, coords)  # Add X/Y to original data
+
+# Width and height in projection units (adjust as needed)
+
+
+# Start with the base map
+map <- ggplot() +
+  geom_sf(data = world_proj, fill = "#1C365F", color = "gray50") +
+  # geom_sf_text(data = cities_proj, aes(label = name), nudge_y = 0) +
+  coord_sf(crs = ortho_crs, xlim = c(-6e6, 6e6), ylim = c(-3e6, 6e6), expand = FALSE) +
+  theme_minimal()
 
 
 
 
-
-# Load full world map
-world <- ne_countries(scale = "medium", returnclass = "sf")
-
-# Create a data frame with city names and coordinates
-
-
-# Plot Europe (approximate bounding box set in coord_sf only)
-map <- ggplot(data = world) +
-  geom_sf(fill = "antiquewhite") +
-  geom_point(data = cities, aes(x = lon, y = lat), color = "red", size = 3) +
-  geom_text(data = cities, aes(x = lon, y = lat, label = name), 
-            nudge_y = 1, size = 3, color = "black") +
-  coord_sf(
-    xlim = c(-23, 32), ylim = c(35, 65)
-           ) +  # Adjust view here
-  theme_minimal() +
-  labs(title = "Map of Europe with Selected Cities",
-       x = NULL, y = NULL)
+tree_colors <- tibble(
+  taxo=factor(c("TSAR","Haptista","Cryptista","Archaeplastida","Amorphea","Obazoa","Excavata","Eukaryota_X", "other")),
+  color=c("#b25545","#b08f89", "#8c8fc6", "#afb96c", "#959ca5","#959ca5", "#917990ff", "#ac9e71ff", "grey")
+)
+w <- 7e5  # ~300 km
+h <- 15e4
 
 
-
-w <- 8
-h <- 2
-
-# Loop through cities and add each plot as a grob
-for (i in seq_len(nrow(cities))) {
-  #city <- cities$name[i]
-  lon <- cities$lon[i]
-  lat <- cities$lat[i]
-  plot_grob <- ggplotGrob(p_list[[i]]+geom_col(show.legend = F)+
-                            theme_void())
+# Annotate plots
+for (i in seq_len(nrow(cities_coords))) {
+  x <- cities_coords[i, "X"]
+  y <- cities_coords[i, "Y"]
+  
+  plot_grob <- ggplotGrob(
+    p_list[[i]] + geom_col(show.legend = FALSE) + 
+      scale_fill_manual(breaks = tree_colors$taxo, values=tree_colors$color)+
+      theme_void()
+  )
   
   map <- map + annotation_custom(
     grob = plot_grob,
-    xmin = lon - w/2,
-    xmax = lon + w/2,
-    ymin = lat - h/2,
-    ymax = lat + h/2
+    xmin = x - w/2,
+    xmax = x + w/2,
+    ymin = y - h/2,
+    ymax = y + h/2
   )
 }
 
 
-legend_grob <- cowplot::get_legend(p_list[[1]]+geom_col()+theme(legend.title = element_blank()))
+legend_grob <- cowplot::get_legend(p_list[[1]]+geom_col()+
+                                     scale_fill_manual(breaks = tree_colors$taxo, values=tree_colors$color)+theme(legend.title = element_blank()))
 
 
-map+ annotation_custom(
+full_p <- map+ annotation_custom(
   grob = legend_grob,
-  xmin = -25, xmax = -15,  # Choose a good spot
+  xmin = -5e6, xmax = -15,  # Choose a good spot
   ymin = 48, ymax = 60
-)
+)+
+  geom_sf_text(data = cities_proj, aes(label = name), nudge_y = 0, color="white")
+
+
+
+
+
+
+pdf(file="/g/schwab/marco/projects/trec_metaB/europe_ov_plot_newproj.pdf", width=30, height=30)
+print(full_p)
+dev.off()
+
+
+
+
+png(file="/g/schwab/marco/projects/trec_metaB/europe_ov_plot_newproj.png", width=5000, height=5000, res = 200)
+print(full_p)
+dev.off()
+
+
 
