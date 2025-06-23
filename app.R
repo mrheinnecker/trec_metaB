@@ -84,7 +84,7 @@ server <- function(input, output) {
     
     # Example plot: count by size_fraction for selected site
     ggplot(df_filtered) +
-      geom_col(aes(x = level_1, y=nreads, fill = asv_id)) +
+      geom_col(aes(y = level_1, x=nreads, fill = level_2), show.legend=F) +
       theme_minimal() +
       labs(
         title = paste("Size Fractions for Site:", selected_sample),
