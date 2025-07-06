@@ -2,6 +2,10 @@ library(shiny)
 library(shinydashboard)
 library(tidyverse)
 library(plotly)
+library(Biostrings)
+library(DECIPHER)
+
+source("/g/schwab/marco/repos/trec_metaB/fncts.R")
 
 # Load data
 df_asv_per_sample <- read_tsv("/g/schwab/marco/projects/trec_metaB/prepared_input/asvs_per_sample.tsv")
@@ -102,6 +106,25 @@ ui <- dashboardPage(
               )
               
               
+      
+      ),
+      tabItem(tabName = "page3",
+            h2("Compile something from text input"),
+            
+            textInput("text_input", "Enter your input text:", placeholder = "Type something here..."),
+            
+            actionButton("submit_button", "Submit"),
+            
+            verbatimTextOutput("result_output")  # for showing output of the compilation
+      ),
+      tabItem(tabName = "page4",
+              h2("Compile something from text input"),
+              
+              textInput("text_input", "Enter your input text:", placeholder = "Type something here..."),
+              
+              actionButton("submit_button", "Submit"),
+              
+              verbatimTextOutput("result_output")  # for showing output of the compilation
       )
     )
   )
@@ -273,6 +296,27 @@ server <- function(input, output, session) {
                       choices = c("--all--", level8_choices),
                       selected = "--all--")
   })
+  
+  
+  ## page 4 sequence based query
+  observeEvent(input$submit_button, {
+    req(input$text_input)  # Ensure it's not empty
+    
+    # Simulate "compilation" or processing
+    result <- paste("You submitted:", input$text_input)
+    
+    seq2 <- "AGGTAGATGA"
+    
+    
+    hits <- sequence_query(query_seq = input$text_input, 
+                               df_asv_taxonomy)
+    
+    
+    output$result_output <- renderText({
+      paste(length(hits), "hits detected")
+    })
+  })
+  
   
   
   

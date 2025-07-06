@@ -1,4 +1,65 @@
 
+
+merge_with_padding_fast <- function(strings, pad_char = "X", block_size = 10) {
+  result_parts <- character(length(strings) * 2)  # max possible: one string + one pad per element
+  total_len <- 0
+  idx <- 1
+  
+  for (s in strings) {
+    result_parts[idx] <- s
+    idx <- idx + 1
+    total_len <- total_len + nchar(s)
+    pad_len <- block_size - (total_len %% block_size)
+    if (pad_len != block_size) {
+      result_parts[idx] <- strrep(pad_char, pad_len)
+      idx <- idx + 1
+      total_len <- total_len + pad_len
+    }
+  }
+  
+  paste0(result_parts[1:(idx - 1)], collapse = "")
+}
+
+
+
+
+sequence_query <- function(query_seq, df_asv_taxonomy, similarity=0.9){
+  
+  
+  all_seqs <- DNAStringSet(df_asv_taxonomy$sequence, use.names = T)
+  names(all_seqs) <- df_asv_taxonomy$asv_id
+  
+  query_seq <- df_asv_taxonomy$sequence[4000] 
+  
+  db_matrix <- oligonucleotideFrequency(DNAStringSet(all_seqs), width=5)
+  query_vector <- oligonucleotideFrequency(DNAString(query_seq), width=5)
+  db_matrix <- as.matrix(db_matrix)
+  query_vector <- as.matrix(query_vector)
+  
+  rownames(db_matrix) <- paste0("seq_", seq_len(nrow(db_matrix)))
+  ## maybe this can be accelerated
+  sim_scores <- apply(db_matrix, 1, function(row_vec){
+    
+    cosine(as.numeric(query_vector), row_vec)
+    
+  })
+  
+  names(all_seqs[which(sim_scores>similarity)])
+  
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 asv_overview_per_sample <- function(asv_frac_per_sample, dino_high_abundance, tree, y_annotation="level_7", tree_xlim=0.2){
   
   
