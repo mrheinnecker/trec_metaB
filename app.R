@@ -1,4 +1,5 @@
 library(shiny)
+library(shinydashboard)
 library(tidyverse)
 library(plotly)
 
@@ -11,75 +12,101 @@ df_filtered <- df_asv_taxonomy
 df_sampling_sites <- df_sampling_sites %>%
   mutate(count = 1)
 
-# UI
-ui <- fluidPage(
-  titlePanel("Sampling Sites Interactive Plot (Click a Sample)"),
-  sidebarLayout(
-    sidebarPanel(
-      selectInput("color_by", 
-                  label = "Color bars by:",
-                  choices = c("size_fraction", "time", "TARA", "depth_m"),
-                  selected = "size_fraction"),
-      verbatimTextOutput("selected_sample"),
-      selectInput("level1_filter",
-                  label = "Filter by Domain (level_1):",
-                  choices = unique(df_asv_taxonomy$level_1),
-                  selected = "Eukaryota"),
-      
-      selectInput("level2_filter",
-                  label = "Filter by Group (level_2):",
-                  choices = NULL,
-                  selected = NULL,
-                  multiple = FALSE),
-      
-      selectInput("level3_filter",
-                  label = "Filter by Subgroup (level_3):",
-                  choices = NULL,
-                  selected = NULL,
-                  multiple = FALSE),
-      
-      selectInput("level4_filter",
-                  label = "Filter by level_4:",
-                  choices = NULL,
-                  selected = NULL,
-                  multiple = FALSE),
-      
-      selectInput("level5_filter",
-                  label = "Filter by level_5:",
-                  choices = NULL,
-                  selected = NULL,
-                  multiple = FALSE),
-      
-      selectInput("level6_filter",
-                  label = "Filter by level_6:",
-                  choices = NULL,
-                  selected = NULL,
-                  multiple = FALSE),
-      
-      selectInput("level7_filter",
-                  label = "Filter by level_7:",
-                  choices = NULL,
-                  selected = NULL,
-                  multiple = FALSE),
-      
-      selectInput("level8_filter",
-                  label = "Filter by level_8:",
-                  choices = NULL,
-                  selected = NULL,
-                  multiple = FALSE)
-      
 
-      
-    ),
-    mainPanel(
-      plotlyOutput("barPlot"),
-      br(),
-      plotOutput("secondPlot")
+
+ui <- dashboardPage(
+  dashboardHeader(title = "TREC metaB Browser"),
+  
+  dashboardSidebar(
+    sidebarMenu(id = "tabs",  # important!
+                menuItem("Overview", tabName = "page1"),
+                menuItem("Browse samples", tabName = "page2"),
+                menuItem("text based search", tabName = "page3"),
+                menuItem("sequence based search", tabName = "page4")
+    )
+  ),
+  
+  dashboardBody(
+    tabItems(
+      tabItem(tabName = "page1",
+              h2("This is Page 1"),
+              actionButton("go_to_page2", "Go to Page 2 with Plot A")
+      ),
+      tabItem(tabName = "page2",
+              h2("This is Page 2"),
+              ui <- fluidPage(
+                titlePanel("Sampling Sites Interactive Plot (Click a Sample)"),
+                sidebarLayout(
+                  sidebarPanel(
+                    selectInput("color_by", 
+                                label = "Color bars by:",
+                                choices = c("size_fraction", "time", "TARA", "depth_m"),
+                                selected = "size_fraction"),
+                    verbatimTextOutput("selected_sample"),
+                    selectInput("level1_filter",
+                                label = "Filter by Domain (level_1):",
+                                choices = unique(df_asv_taxonomy$level_1),
+                                selected = "Eukaryota"),
+                    
+                    selectInput("level2_filter",
+                                label = "Filter by Group (level_2):",
+                                choices = NULL,
+                                selected = NULL,
+                                multiple = FALSE),
+                    
+                    selectInput("level3_filter",
+                                label = "Filter by Subgroup (level_3):",
+                                choices = NULL,
+                                selected = NULL,
+                                multiple = FALSE),
+                    
+                    selectInput("level4_filter",
+                                label = "Filter by level_4:",
+                                choices = NULL,
+                                selected = NULL,
+                                multiple = FALSE),
+                    
+                    selectInput("level5_filter",
+                                label = "Filter by level_5:",
+                                choices = NULL,
+                                selected = NULL,
+                                multiple = FALSE),
+                    
+                    selectInput("level6_filter",
+                                label = "Filter by level_6:",
+                                choices = NULL,
+                                selected = NULL,
+                                multiple = FALSE),
+                    
+                    selectInput("level7_filter",
+                                label = "Filter by level_7:",
+                                choices = NULL,
+                                selected = NULL,
+                                multiple = FALSE),
+                    
+                    selectInput("level8_filter",
+                                label = "Filter by level_8:",
+                                choices = NULL,
+                                selected = NULL,
+                                multiple = FALSE)
+                    
+                    
+                    
+                  ),
+                  mainPanel(
+                    plotlyOutput("barPlot"),
+                    br(),
+                    plotOutput("secondPlot")
+                  )
+                )
+              )
+              
+              
+      )
     )
   )
 )
 
-# Server
 server <- function(input, output, session) {
   output$barPlot <- renderPlotly({
     p <- ggplot(df_sampling_sites) +
@@ -274,42 +301,79 @@ server <- function(input, output, session) {
     
     print(selected_sample)
     
+    level_inputs <- c(
+      input$level1_filter,
+      input$level2_filter,
+      input$level3_filter,
+      input$level4_filter,
+      input$level5_filter,
+      input$level6_filter,
+      input$level7_filter,
+      input$level8_filter
+    )
+    
+    #level_inputs <- c("Eukaryota", "--all--", "--all--", "--all--", "--all--", "--all--", "--all--", "--all--")
+    
+    first_non_selected_level <- min(which(level_inputs=="--all--"))
+    print(paste("levels:", first_non_selected_level))
     # Dummy plot showing taxa counts (replace with real logic if needed)
     df_filtered <- df_asv_per_sample %>%
       filter(sample_id == selected_sample,
              #level_1==input$level1_filter
-             ) %>%
+      ) %>%
       left_join(df_asv_taxonomy) 
     
-    if(input$level2_filter == "--all--"){
-      df_filtered <- df_filtered %>%
-        filter(level_1==input$level1_filter) %>%
-        mutate(
-          col_x=level_2,
-          col_fill=level_3
-        )
-    } else {
-      df_filtered <- df_filtered %>%
-        filter(level_1==input$level1_filter,
-               level_2==input$level2_filter)%>%
-        mutate(
-          col_x=level_3,
-          col_fill=level_4
-        )
+    #print(names(df_filtered))
+    
+    for (LEV in seq(2,first_non_selected_level)){
+      
+      df_filtered <- df_filtered[which(df_filtered[[paste0("level_", LEV-1)]] == level_inputs[[LEV-1]]),] 
+      
+      print(nrow(df_filtered))
+      
     }
     
-    print(input$level1_filter)
+    
+    df_plot <- df_filtered %>%
+      select(col_x=paste0("level_", first_non_selected_level), 
+             col_fill=paste0("level_", first_non_selected_level+1), nreads)
+    
+    
+    print(df_plot)
+    
+    # if(input$level2_filter == "--all--"){
+    #   df_filtered <- df_filtered %>%
+    #     filter(level_1==input$level1_filter) %>%
+    #     mutate(
+    #       col_x=level_2,
+    #       col_fill=level_3
+    #     )
+    # } else {
+    # df_filtered <- df_filtered %>%
+    #   filter(level_1==input$level1_filter,
+    #          level_2==input$level2_filter)%>%
+    #   mutate(
+    #     col_x=level_3,
+    #     col_fill=level_4
+    #   )
+    # }
+    
+    #print(input$level1_filter)
     
     # Example plot: count by size_fraction for selected site
-    ggplot(df_filtered) +
+    p2 <- ggplot(df_plot) +
       geom_col(aes(y = col_x, x=nreads, fill = col_fill), show.legend=F) +
       theme_minimal() +
       labs(
         title = paste("Size Fractions for Site:", selected_sample),
         x = "Size Fraction", y = "Count"
       )
+    p2
+    
+    # ggplotly(p2, tooltip = "text") %>%
+    #   config(displayModeBar = FALSE)
+    
   })
 }
 
-# Run the app
-shinyApp(ui = ui, server = server)
+shinyApp(ui, server)
