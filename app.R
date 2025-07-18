@@ -4,6 +4,16 @@ library(tidyverse)
 library(plotly)
 library(Biostrings)
 library(DECIPHER)
+library(grid)
+library(readxl)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(sf)
+library(grid)  # for grobs
+library(gridExtra)  # just in case
+library(maps)
+library(stringdist)
+
 
 source("/g/schwab/marco/repos/trec_metaB/fncts.R")
 
@@ -113,18 +123,29 @@ ui <- dashboardPage(
             
             textInput("text_input", "Enter your input text:", placeholder = "Type something here..."),
             
-            actionButton("submit_button", "Submit"),
+            actionButton("text_submit_button", "Submit"),
             
-            verbatimTextOutput("result_output")  # for showing output of the compilation
+            verbatimTextOutput("text_result_output"),  # for showing output of the compilation
+            
+            ui <- fluidPage(
+              titlePanel("Sampling Sites Interactive Plot (Click a Sample)"),
+              
+                mainPanel(
+                  plotlyOutput("treePlot")
+                  #plotOutput("treePlot")
+                )
+              
+            )
+            
       ),
       tabItem(tabName = "page4",
               h2("Compile something from text input"),
               
               textInput("text_input", "Enter your input text:", placeholder = "Type something here..."),
               
-              actionButton("submit_button", "Submit"),
+              actionButton("seq_submit_button", "Submit"),
               
-              verbatimTextOutput("result_output")  # for showing output of the compilation
+              verbatimTextOutput("seq_result_output")  # for showing output of the compilation
       )
     )
   )
@@ -296,23 +317,68 @@ server <- function(input, output, session) {
                       choices = c("--all--", level8_choices),
                       selected = "--all--")
   })
+  ## page3 text based query
+  # tree_plot_data <- reactiveVal(NULL)
+  # 
+  # # 2. Update it inside observeEvent
+  # observeEvent(input$text_submit_button, {
+  #   req(input$text_input)
+  #   tp <- tree_taxo(input$text_input, df_asv_taxonomy)
+  #   tree_plot_data(tp)
+  # })
+  # 
+  # # 3. Render the plot outside of observeEvent
+  # output$treePlot <- renderPlot({
+  #   req(tree_plot_data())  # ensure there's something to plot
+  #   tree_plot_data()
+  # })
+  
+  # Step 1: Create reactiveVal without assigning yet
+  selected_node <- reactiveVal(NULL)
+  
+  # Step 2: Update it after user submits input
+  observeEvent(input$text_submit_button, {
+    req(input$text_input)
+    selected_node(input$text_input)
+  })
+  
+  # Step 3: Generate plot based on current node
+
+  
+  # Step 4: Render plotly plot
+  output$treePlot <- renderPlotly({
+    req(selected_node())
+    ggplotly(
+      tree_taxo(selected_node(), df_asv_taxonomy), 
+      tooltip = "label")
+  })
+  
+  # Step 5: Handle plotly click to update selected node
+  observeEvent(event_data("plotly_click"), {
+    click <- event_data("plotly_click")
+    if (!is.null(click)) {
+      clicked_label <- click$key %||% click$text %||% click$customdata
+      if (!is.null(clicked_label)) {
+        selected_node(clicked_label)
+        print(clicked_label)
+      }
+    }
+  })
+  
   
   
   ## page 4 sequence based query
-  observeEvent(input$submit_button, {
+  observeEvent(input$seq_submit_button, {
     req(input$text_input)  # Ensure it's not empty
     
     # Simulate "compilation" or processing
     result <- paste("You submitted:", input$text_input)
     
-    seq2 <- "AGGTAGATGA"
-    
-    
     hits <- sequence_query(query_seq = input$text_input, 
                                df_asv_taxonomy)
     
     
-    output$result_output <- renderText({
+    output$seq_result_output <- renderText({
       paste(length(hits), "hits detected")
     })
   })

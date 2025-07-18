@@ -1,26 +1,210 @@
 
-
-merge_with_padding_fast <- function(strings, pad_char = "X", block_size = 10) {
-  result_parts <- character(length(strings) * 2)  # max possible: one string + one pad per element
-  total_len <- 0
-  idx <- 1
+#query <- "Heterocapsa"
+#query <- "Dinoflag"
+tree_taxo <- function(query, df_asv_taxonomy){
   
-  for (s in strings) {
-    result_parts[idx] <- s
-    idx <- idx + 1
-    total_len <- total_len + nchar(s)
-    pad_len <- block_size - (total_len %% block_size)
-    if (pad_len != block_size) {
-      result_parts[idx] <- strrep(pad_char, pad_len)
-      idx <- idx + 1
-      total_len <- total_len + pad_len
-    }
-  }
   
-  paste0(result_parts[1:(idx - 1)], collapse = "")
+  # target_list <- df_asv_taxonomy %>% select(starts_with("level_")) %>%
+  #   as.character() %>% unique()
+  # 
+  # 
+ # test_mat <- matrix(target_list, nrow=4)
+  
+  hit_per_level <- df_asv_taxonomy %>% select(starts_with("level_")) %>%
+    #.[1:20,] %>%
+    apply(., 2, function(TAXO){
+      #print(TAXO)
+      #print("\n\n")
+      #print(unique(TAXO))
+      full_list <- unique(TAXO) %>% as.character()
+      
+      #print(full_list)
+      
+      distances <- stringdist::stringdist(query, full_list, method = "jw")
+      
+      #print(distances)
+      
+      hit <- full_list[which(distances==min(distances, na.rm=T))]
+      
+      #print(hit)
+      
+      return(tibble(hit=hit, score=min(distances, na.rm=T)))
+      
+    }) %>%
+    bind_rows()
+  
+  rel_col <- which(hit_per_level$score==min(hit_per_level$score))
+  
+  colname <- paste0("level_", rel_col)
+  hit <- hit_per_level[which(hit_per_level$score==min(hit_per_level$score)),]$hit
+ 
+  
+  sel_cols <- paste0("level_", seq(1, rel_col+1))
+  
+  plot_data_raw <- 
+    df_asv_taxonomy %>%
+    filter(select(., all_of(colname))==hit) %>%
+    select(all_of(sel_cols)) %>%
+    unique()%>%
+    pivot_longer(cols=names(.), names_to = "level", values_to = "taxo") %>%
+    mutate(num_level=str_replace(level, "level_", "") %>% as.numeric()) %>%
+    unique() %>%
+    group_by(num_level) %>%
+    mutate(ypos_raw=seq(1,length(num_level))) 
+  
+  plot_data <- plot_data_raw %>%
+    left_join(
+      plot_data_raw %>% group_by(num_level) %>% tally()
+    ) %>%
+    ungroup() %>%
+    mutate(
+      ypos=ifelse(n==1, 
+                  0.5*(max(plot_data_raw$ypos_raw)+1),
+                  ypos_raw),
+      ang=ifelse(n==1, 
+                 315,
+                 0),
+      just=ifelse(n==1, 
+                  1,
+                  0),
+      lab=ifelse(n==1, 
+                 paste0(taxo, " "),
+                 paste0(" ", taxo)),
+    )
+  
+  line_data <- plot_data %>%
+    filter(num_level %in% c(max(plot_data$num_level))) %>%
+    select(y=ypos, x=num_level) %>%
+    mutate(yend=plot_data %>%
+             filter(num_level %in% c(max(plot_data$num_level)-1)) %>% pull(ypos),
+           xend=max(plot_data$num_level)-1) %>%
+    bind_rows(
+      tibble(x=1, xend=max(plot_data$num_level)-1,
+             y=0.5*(max(plot_data_raw$ypos_raw)+1),
+             yend=0.5*(max(plot_data_raw$ypos_raw)+1))
+    )
+  
+  tree_plot <- ggplot(plot_data,
+         aes(x=num_level, y=ypos))+
+    geom_segment(data=line_data, aes(x=x, y=y, xend=xend, yend=yend))+
+    geom_point(color="red", aes(key=taxo))+
+    geom_text(aes(label=lab, angle=ang, hjust=just))+
+    theme_void()
+  
+  return(tree_plot)
+  
 }
 
 
+
+
+
+europe_map_plot <- function(){
+  
+  
+  
+  
+  input_tables <- load_required_tables()
+  
+  p_list=lapply(sort(input_tables$site_mapping$site %>% unique()), 
+                get_stacked_barplot_per_site, 
+                df_asvs=input_tables$df_asvs, 
+                site_mapping=input_tables$site_mapping,
+                mapping=input_tables$mapping)
+  
+  
+  
+  cities <- 
+    tibble(
+      name = c("Roscoff", "Kristineberg", "Villefranche",
+               "Tallinn", 
+               "Porto", 
+               #"Barcelona", 
+               #"Naples", "Athens", 
+               "Reykjavik", "Bilbao"),
+      lon = c(-3.9833, 11.4394, 7.3120,
+              24.7536, -8.6110, #2.1734,
+              #14.2681, 23.7275, 
+              -21.8277, -2.9349),
+      lat = c(48.7269, 58.2375, 43.7040,
+              59.4370, 41.1496, #41.3851,
+              #40.8522, 37.9838, 
+              64.1283, 43.2630)
+    )   %>%
+    mutate(name = factor(name, levels = levels(input_tables$site_mapping$site))) %>%
+    arrange(name)
+  
+  
+  ortho_crs <- "+proj=ortho +lat_0=50 +lon_0=10"
+  cities_sf <- st_as_sf(cities, coords = c("lon", "lat"), crs = 4326)
+  cities_proj <- st_transform(cities_sf, crs = ortho_crs)
+  
+  # Extract projected coordinates
+  coords <- st_coordinates(cities_proj)
+  cities_coords <- cbind(cities, coords)  # Add X/Y to original data
+  
+  # Width and height in projection units (adjust as needed)
+  world <- ne_countries(scale = "medium", returnclass = "sf")
+  world_proj <- st_transform(world, crs = ortho_crs)
+  # Orthographic projection centered on Europe
+  
+  
+  # Start with the base map
+  map <- ggplot() +
+    geom_sf(data = world_proj, fill = "#1C365F", color = "gray50") +
+    # geom_sf_text(data = cities_proj, aes(label = name), nudge_y = 0) +
+    coord_sf(crs = ortho_crs, 
+             xlim = c(-6e6, 6e6), ylim = c(-3e6, 6e6), expand = FALSE) +
+    theme_minimal()
+  
+  
+  
+  
+  tree_colors <- tibble(
+    taxo=factor(c("TSAR","Haptista","Cryptista","Archaeplastida","Amorphea","Obazoa","Excavata","Eukaryota_X", "other")),
+    color=c("#b25545","#b08f89", "#8c8fc6", "#afb96c", "#959ca5","#959ca5", "#917990ff", "#ac9e71ff", "grey")
+  )
+  w <- 7e5  # ~300 km
+  h <- 15e4
+  
+  
+  # Annotate plots
+  for (i in seq_len(nrow(cities_coords))) {
+    x <- cities_coords[i, "X"]
+    y <- cities_coords[i, "Y"]
+    
+    plot_grob <- ggplotGrob(
+      p_list[[i]] + geom_col(show.legend = FALSE) + 
+        scale_fill_manual(breaks = tree_colors$taxo, values=tree_colors$color)+
+        theme_void()
+    )
+    
+    map <- map + annotation_custom(
+      grob = plot_grob,
+      xmin = x - w/2,
+      xmax = x + w/2,
+      ymin = y - h/2,
+      ymax = y + h/2
+    )
+  }
+  
+  
+  legend_grob <- cowplot::get_legend(p_list[[1]]+geom_col()+
+                                       scale_fill_manual(breaks = tree_colors$taxo, values=tree_colors$color)+theme(legend.title = element_blank()))
+  
+  
+  full_p <- map+ annotation_custom(
+    grob = legend_grob,
+    xmin = -5e6, xmax = -15,  # Choose a good spot
+    ymin = 48, ymax = 60
+  )+
+    geom_sf_text(data = cities_proj, aes(label = name), nudge_y = 0, color="white")
+  
+  
+  
+  return(full_p)
+  
+}
 
 
 sequence_query <- function(query_seq, df_asv_taxonomy, similarity=0.9){
@@ -29,14 +213,16 @@ sequence_query <- function(query_seq, df_asv_taxonomy, similarity=0.9){
   all_seqs <- DNAStringSet(df_asv_taxonomy$sequence, use.names = T)
   names(all_seqs) <- df_asv_taxonomy$asv_id
   
-  query_seq <- df_asv_taxonomy$sequence[4000] 
+  #query_seq <- df_asv_taxonomy$sequence[4000] 
+  
+  query_seq <-"GGTGAAAGCCCATCGCTCAACGGTGGAACGGCCATTGATACTGTCTGACTTGAATTATTAGGAAGTAACTAGAATATGTAGTGTAGCGGTGAAATGCTTAGAGATTACATGGAATACCAATTGCGAAGGCAGGTTACTACTAATTGATTGACGCTGATGGACGAAAGCGTGGGTAGCGAACAGGATTAGATACCCTGGTAGTCCACGCCGTAAACGATGGATACTAGCTGTTGGGGGCAACTTCAGTGGCTAAGCGAAAGTGATAAGTATCCCACCTGGGGAGTACGTTCGCAAGAATG"
   
   db_matrix <- oligonucleotideFrequency(DNAStringSet(all_seqs), width=5)
   query_vector <- oligonucleotideFrequency(DNAString(query_seq), width=5)
   db_matrix <- as.matrix(db_matrix)
   query_vector <- as.matrix(query_vector)
   
-  rownames(db_matrix) <- paste0("seq_", seq_len(nrow(db_matrix)))
+ # rownames(db_matrix) <- paste0("seq_", seq_len(nrow(db_matrix)))
   ## maybe this can be accelerated
   sim_scores <- apply(db_matrix, 1, function(row_vec){
     
@@ -44,7 +230,10 @@ sequence_query <- function(query_seq, df_asv_taxonomy, similarity=0.9){
     
   })
   
-  names(all_seqs[which(sim_scores>similarity)])
+  
+  max(sim_scores)
+  
+  names(all_seqs[which(sim_scores>0.5)])
   
 }
 
