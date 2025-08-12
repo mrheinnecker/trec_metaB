@@ -26,7 +26,7 @@ df_filtered <- df_asv_taxonomy
 df_sampling_sites <- df_sampling_sites %>%
   mutate(count = 1)
 
-
+global_env <- list()
 
 ui <- dashboardPage(
   dashboardHeader(title = "TREC metaB Browser"),
@@ -49,6 +49,10 @@ ui <- dashboardPage(
       tabItem(tabName = "page2",
               h2("This is Page 2"),
               ui <- fluidPage(
+                actionButton("submit_selection", "get overview for selection"),
+                #actionButton("export_main_ov", "Export plot"),
+                downloadButton("dl_main_plot", "Download PDF"),
+                #downloadButton("export_main_ov", "Download PDF"),
                 titlePanel("Sampling Sites Interactive Plot (Click a Sample)"),
                 sidebarLayout(
                   sidebarPanel(
@@ -108,6 +112,8 @@ ui <- dashboardPage(
                     
                   ),
                   mainPanel(
+                    plotOutput("mainPlot"),
+                    br(),
                     plotlyOutput("barPlot"),
                     br(),
                     plotOutput("secondPlot")
@@ -122,17 +128,23 @@ ui <- dashboardPage(
             h2("Compile something from text input"),
             
             textInput("text_input", "Enter your input text:", placeholder = "Type something here..."),
-            
+            radioButtons(
+              inputId = "page3_radio_choice",              # The variable name for server access
+              label = "Choose an option:",     # The text above the radio buttons
+              choices = c("Option A", "Option B", "Option C"), # List of options
+              selected = "Option B",           # Default selected option
+              inline = FALSE                   # TRUE puts them side-by-side
+            ),
             actionButton("text_submit_button", "Submit"),
-            
+            actionButton("run_analysis_button", "Analyse metaB data"),
             verbatimTextOutput("text_result_output"),  # for showing output of the compilation
             
             ui <- fluidPage(
               titlePanel("Sampling Sites Interactive Plot (Click a Sample)"),
               
                 mainPanel(
-                  plotlyOutput("treePlot")
-                  #plotOutput("treePlot")
+                  plotlyOutput("treePlot"),
+                  plotOutput("main_analysis")
                 )
               
             )
@@ -343,7 +355,7 @@ server <- function(input, output, session) {
   })
   
   # Step 3: Generate plot based on current node
-
+  
   
   # Step 4: Render plotly plot
   output$treePlot <- renderPlotly({
@@ -361,9 +373,50 @@ server <- function(input, output, session) {
       if (!is.null(clicked_label)) {
         selected_node(clicked_label)
         print(clicked_label)
+        updateTextInput(session, "text_input", value = clicked_label)
+        
       }
     }
   })
+  
+  ## Step 6: when analyze button is clicked - do analysis based on current node
+  observeEvent(input$run_analysis_button, {
+    req(input$text_input)
+    query <- input$text_input
+    rel_colname <- get_highest_score_colname(input$text_input, df_asv_taxonomy)
+    
+    rel_asvs <- df_asv_taxonomy %>%
+      select(asv_id, rel_col=all_of(rel_colname)) %>%
+      filter(rel_col==query) %>%
+      pull(asv_id)
+    
+    
+    asvs_per_sample <- df_asv_per_sample %>%
+      filter(asv_id %in% rel_asvs) %>%
+      left_join(df_sampling_sites, by="sample_id")
+    
+    
+    main_abundance_plot <- get_main_abundance_plot(asvs_per_sample, 
+                                                   df_asv_taxonomy, 
+                                                   df_asv_per_sample)
+    
+    
+    print(paste("running analysis on:", input$text_input))
+    
+    # #dummy_plot <- 
+    #   ggplot(asvs_per_sample,
+    #                      aes(x=as.character(sample_id), y=nreads))+
+    #     facet_grid("x"~site, scales = "free_x", space = "free")+
+    #   geom_col(position="stack")
+    
+    output$main_analysis <- renderPlot({
+      
+      main_abundance_plot
+      
+    })
+    
+  })
+  
   
   
   
@@ -377,13 +430,106 @@ server <- function(input, output, session) {
     hits <- sequence_query(query_seq = input$text_input, 
                                df_asv_taxonomy)
     
-    
     output$seq_result_output <- renderText({
       paste(length(hits), "hits detected")
     })
   })
   
+  main_plot <- reactiveVal(NULL)
+  main_plot_nrows <- reactiveVal(NULL)
+  main_plot_nsamples <- reactiveVal(NULL)
+ 
+  observeEvent(input$submit_selection, {
+
+    print("SUBMISSIONS")
+    
+    level_inputs <- c(
+      input$level1_filter,
+      input$level2_filter,
+      input$level3_filter,
+      input$level4_filter,
+      input$level5_filter,
+      input$level6_filter,
+      input$level7_filter,
+      input$level8_filter
+    )
+    
+    #level_inputs <- c("Eukaryota", "--all--", "--all--", "--all--", "--all--", "--all--", "--all--", "--all--")
+    
+    df_filtered <- select_taxo_level(level_inputs, df_asv_per_sample)
+    
+    rel_asvs <- unique(df_filtered$asv_id)
+    
+    print(rel_asvs)
+    
+    asvs_per_sample <- df_asv_per_sample %>%
+      filter(asv_id %in% rel_asvs) %>%
+      left_join(df_sampling_sites, by="sample_id")
+    
+    
+    print("building main plot")
+    print(asvs_per_sample)
+    p3 <- get_main_abundance_plot(asvs_per_sample, 
+                                  df_asv_taxonomy, 
+                                  df_asv_per_sample)
+    output$mainPlot <- renderPlot({
+      
+      p3 
+      
+    })
+    stopifnot(inherits(p3, "ggplot"))  # helpful during dev
+    main_plot(p3)
+    main_plot_nrows(length(rel_asvs))
+    main_plot_nsamples(nrow(df_sampling_sites))
+    #global_env$main_plot <- p3
+    
+  })
   
+  output$mainPlot <- renderPlot({
+    req(main_plot())
+    main_plot()
+  })
+  
+  # observeEvent(input$export_main_ov, {
+  #   
+  #   #req(global_env$main_plot)
+  #   
+  #   print("exporting plot to")
+  #   
+  #   pdf(file = "/home/rheinnec/test_export.pdf", width=10, height=20)
+  #   grid.arrange(global_env$main_plot)
+  #   dev.off()
+  #   
+  #   print("export done")
+  #   
+  # })
+  
+  
+  # observeEvent(input$export_main_ov, {
+  #   req(main_plot())
+  #   path <- file.path(getwd(), "test_export.pdf")
+  #   tryCatch({
+  #     ggplot2::ggsave(path, plot = main_plot(), device = grDevices::cairo_pdf,
+  #                     width = 15, height = 20, units = "in", limitsize = FALSE)
+  #     showNotification(paste("Exported to", path))
+  #   }, error = function(e) {
+  #     showNotification(paste("Export failed:", e$message), type = "error")
+  #   })
+  # })
+  output$dl_main_plot <- downloadHandler(
+    filename = function() paste0("main_plot_", Sys.Date(), ".pdf"),
+    contentType = "application/pdf",
+    content = function(file) {
+      req(main_plot())
+      ggplot2::ggsave(
+        filename  = file,
+        plot      = main_plot(),         # your cowplot/ggplot object
+        device    = grDevices::cairo_pdf,# or "pdf"
+        width     = main_plot_nsamples()/6, height = main_plot_nrows()/5, units = "in",
+        limitsize = FALSE
+      )
+    }
+  )
   
   
   # Print sample_id on click
@@ -422,56 +568,11 @@ server <- function(input, output, session) {
       input$level8_filter
     )
     
-    #level_inputs <- c("Eukaryota", "--all--", "--all--", "--all--", "--all--", "--all--", "--all--", "--all--")
+    df_filtered <- select_taxo_level(level_inputs, df_asv_per_sample)
     
-    first_non_selected_level <- min(which(level_inputs=="--all--"))
-    print(paste("levels:", first_non_selected_level))
-    # Dummy plot showing taxa counts (replace with real logic if needed)
-    df_filtered <- df_asv_per_sample %>%
-      filter(sample_id == selected_sample,
-             #level_1==input$level1_filter
-      ) %>%
-      left_join(df_asv_taxonomy) 
-    
-    #print(names(df_filtered))
-    
-    for (LEV in seq(2,first_non_selected_level)){
-      
-      df_filtered <- df_filtered[which(df_filtered[[paste0("level_", LEV-1)]] == level_inputs[[LEV-1]]),] 
-      
-      print(nrow(df_filtered))
-      
-    }
-    
-    
-    df_plot <- df_filtered %>%
-      select(col_x=paste0("level_", first_non_selected_level), 
-             col_fill=paste0("level_", first_non_selected_level+1), nreads)
-    
-    
-    print(df_plot)
-    
-    # if(input$level2_filter == "--all--"){
-    #   df_filtered <- df_filtered %>%
-    #     filter(level_1==input$level1_filter) %>%
-    #     mutate(
-    #       col_x=level_2,
-    #       col_fill=level_3
-    #     )
-    # } else {
-    # df_filtered <- df_filtered %>%
-    #   filter(level_1==input$level1_filter,
-    #          level_2==input$level2_filter)%>%
-    #   mutate(
-    #     col_x=level_3,
-    #     col_fill=level_4
-    #   )
-    # }
-    
-    #print(input$level1_filter)
     
     # Example plot: count by size_fraction for selected site
-    p2 <- ggplot(df_plot) +
+    p2 <- ggplot(df_filtered) +
       geom_col(aes(y = col_x, x=nreads, fill = col_fill), show.legend=F) +
       theme_minimal() +
       labs(
@@ -480,8 +581,7 @@ server <- function(input, output, session) {
       )
     p2
     
-    # ggplotly(p2, tooltip = "text") %>%
-    #   config(displayModeBar = FALSE)
+    
     
   })
 }

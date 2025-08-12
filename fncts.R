@@ -1,14 +1,16 @@
 
 #query <- "Heterocapsa"
 #query <- "Dinoflag"
-tree_taxo <- function(query, df_asv_taxonomy){
+
+
+europe_ov_plot <- function(query){
   
   
-  # target_list <- df_asv_taxonomy %>% select(starts_with("level_")) %>%
-  #   as.character() %>% unique()
-  # 
-  # 
- # test_mat <- matrix(target_list, nrow=4)
+  
+}
+
+
+get_highest_score_per_level <- function(query, df_asv_taxonomy){
   
   hit_per_level <- df_asv_taxonomy %>% select(starts_with("level_")) %>%
     #.[1:20,] %>%
@@ -32,6 +34,33 @@ tree_taxo <- function(query, df_asv_taxonomy){
       
     }) %>%
     bind_rows()
+  
+  return(hit_per_level)
+  
+}
+
+
+
+
+get_highest_score_colname <- function(query, df_asv_taxonomy){
+  
+  hit_per_level <- get_highest_score_per_level(query, df_asv_taxonomy)
+  rel_col <- which(hit_per_level$score==min(hit_per_level$score))
+  colname <- paste0("level_", rel_col)
+  
+}
+
+
+tree_taxo <- function(query, df_asv_taxonomy){
+  
+  
+  # target_list <- df_asv_taxonomy %>% select(starts_with("level_")) %>%
+  #   as.character() %>% unique()
+  # 
+  # 
+ # test_mat <- matrix(target_list, nrow=4)
+  
+  hit_per_level <- get_highest_score_per_level(query, df_asv_taxonomy)
   
   rel_col <- which(hit_per_level$score==min(hit_per_level$score))
   
@@ -238,13 +267,187 @@ sequence_query <- function(query_seq, df_asv_taxonomy, similarity=0.9){
 }
 
 
+fill_up_full_hm_grid <- function(asvs_per_sample_frac){
+  
+  sample_site_map <- asvs_per_sample_frac %>%
+    select(sample_id, site) %>%
+    distinct()
+  
+  # Then, create the full grid
+  full_grid <- expand.grid(
+    sample_id = unique(sample_site_map$sample_id),
+    asv_id = unique(asvs_per_sample_frac$asv_id),
+    stringsAsFactors = FALSE
+  ) %>%
+    left_join(sample_site_map, by = "sample_id")
+  
+  # Then join the original data and fill NAs with 0
+  plot_data <- full_grid %>%
+    left_join(
+      asvs_per_sample_frac %>% 
+        filter(asv_id %in% asvs_per_sample_frac$asv_id) %>%
+        select(sample_id, asv_id, frac),
+      by = c("sample_id", "asv_id")
+    ) %>%
+    mutate(frac = replace_na(frac, 0)) %>%
+    as_tibble()
+  
+  return(plot_data)
+  
+}
 
 
+select_taxo_level <- function(level_inputs, df_asv_per_sample, selected_sample=NULL){
+  
+  first_non_selected_level <- min(which(level_inputs=="--all--"))
+  print(paste("levels:", first_non_selected_level))
+  # Dummy plot showing taxa counts (replace with real logic if needed)
+  if(is.null(selected_sample)){
+    df_filtered <- df_asv_per_sample %>%
+      left_join(df_asv_taxonomy) 
+  } else {
+      df_filtered <- df_asv_per_sample %>%
+    filter(sample_id == selected_sample,
+    ) %>%
+    left_join(df_asv_taxonomy) 
+  }
+
+  
+  #print(names(df_filtered))
+  
+  for (LEV in seq(2,first_non_selected_level)){
+    
+    df_filtered <- df_filtered[which(df_filtered[[paste0("level_", LEV-1)]] == level_inputs[[LEV-1]]),] 
+    
+    #print(nrow(df_filtered))
+    
+  }
+  
+  df_filtered$col_x <- df_filtered[[paste0("level_", first_non_selected_level)]]
+  df_filtered$col_fill <- df_filtered[[paste0("level_", first_non_selected_level+1)]]
+
+  
+  return(df_filtered)
+  
+}
 
 
+get_main_abundance_plot <- function(asvs_per_sample, df_asv_taxonomy, df_asv_per_sample, norm_type="Eukaryota"){
 
+  
+  asvs_to_norm <- df_asv_taxonomy %>%
+    filter(level_1==norm_type) %>%
+    pull(asv_id)
+  print(1)
+  summed_barplot_data <- asvs_per_sample %>%
+    group_by(sample_id) %>%
+    summarize(
+      tot_reads=sum(nreads),
+      site=unique(site)
+    ) #%>%
+    # left_join(
+    #   df_asv_per_sample %>%
+    #     filter(asv_id %in% asvs_to_norm),
+    #   by="asv_id"
+    # )
+  print(2)
+  bar_sumplot <- ggplot(summed_barplot_data,
+         aes(x=as.character(sample_id), y=tot_reads))+
+    facet_grid(~site, scales = "free_x", space = "free")+
+    geom_col()+
+    theme_bw()+
+    theme(
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      axis.title.x = element_blank()
+    )
+  print(3)
+  asvs_per_sample_frac <- asvs_per_sample %>%
+    group_by(sample_id) %>%
+    mutate(tot_sample_reads=sum(nreads)) %>%
+    rowwise() %>%
+    mutate(
+      frac=nreads/tot_sample_reads
+    )
+  
+  print(4)
+  plot_data <- fill_up_full_hm_grid(asvs_per_sample_frac)
+  
+  
+  
+  mx_frac <- max(plot_data$frac)
+  
+  legend_scale <- c(0,0.01,0.5,round(mx_frac*20)/20)
+  
+  
+  color_vec <- c("black","blue4","blue3","darkcyan","green4","green","yellow4","yellow")
+  val_vec <- c(0,
+               0.001/mx_frac,
+               0.0099/mx_frac,
+               0.01/mx_frac,
+               0.0999/mx_frac,
+               # 0.1/mx_frac,
+               # 0.1999/mx_frac,
+               0.2/mx_frac,
+               0.4999/mx_frac,
+               0.5/mx_frac,
+               1)
+  
+  
+  taxo_level <- "level_9"
+  
+  print(5)
+  ylabs <- plot_data %>%
+    left_join(df_asv_taxonomy, by="asv_id") %>%
+    select(asv_id, ylab=all_of(taxo_level))
 
-
+  print(6)
+  hm <- 
+    ggplot(plot_data# %>%
+               #  mutate(asv_id = factor(asv_id, levels = asv_phylo_order))
+               )+
+    geom_tile(
+      aes(x=as.character(sample_id), y=asv_id, fill=frac),
+      #show.legend = F
+    )+
+    facet_grid(~site, scales = "free_x", space = "free")+
+    scale_fill_gradientn(
+      name="abundance [%]",
+      values=val_vec,
+      breaks=legend_scale,
+      labels=paste(legend_scale*100),
+      colors = color_vec
+    )+
+    scale_y_discrete(breaks=ylabs$asv_id, labels=ylabs$ylab)+
+    # scale_y_discrete(name=paste0("ASV [", annotations[which(annotations$name==y_annotation),]$labels, "]"),
+    #                  breaks=dino_high_abundance$asv_id, labels=dino_high_abundance[[y_annotation]])+
+    theme_bw()+
+    theme(
+      axis.text.x = element_text(angle = 270, hjust=0.5, vjust=0.5)
+    )
+    # theme(
+    #   legend.position = "bottom",
+    #   axis.text = element_blank(),
+    #   axis.ticks.x = element_blank(),
+    #   axis.ticks.y = element_blank(),
+    #   axis.title.y = element_blank()
+    # )
+  
+  
+  combined_plot <- cowplot::plot_grid(
+    bar_sumplot,
+    hm,
+    ncol=1,
+    align = "v",
+    axis = "lr",
+    rel_heights=c(1,0.05*length(unique(asvs_per_sample$asv_id)))
+  )
+  
+  print("plot fully created... returning to main script")
+  
+  return(combined_plot)
+  
+}
 
 
 
@@ -263,31 +466,32 @@ asv_overview_per_sample <- function(asv_frac_per_sample, dino_high_abundance, tr
   
   
   rel_asvs_full <- asv_frac_per_sample %>%
-    filter(asv_id %in% dino_high_abundance$asv_id)
+    filter(asv_id %in% dino_high_abundance$asv_id) #%>%
+    #dplyr::rename(sample_id=sample)
   # First, get the list of all relevant samples and their sites
-  sample_site_map <- rel_asvs_full %>%
-    select(sample, site) %>%
-    distinct()
-  
-  # Then, create the full grid
-  full_grid <- expand.grid(
-    sample = unique(sample_site_map$sample),
-    asv_id = unique(dino_high_abundance$asv_id),
-    stringsAsFactors = FALSE
-  ) %>%
-    left_join(sample_site_map, by = "sample")
-  
-  # Then join the original data and fill NAs with 0
-  plot_data <- full_grid %>%
-    left_join(
-      rel_asvs_full %>% 
-        filter(asv_id %in% dino_high_abundance$asv_id) %>%
-        select(sample, asv_id, frac, level_4),
-      by = c("sample", "asv_id")
-    ) %>%
-    mutate(frac = replace_na(frac, 0)) %>%
-    as_tibble()
-  
+  # sample_site_map <- rel_asvs_full %>%
+  #   select(sample, site) %>%
+  #   distinct()
+  # 
+  # # Then, create the full grid
+  # full_grid <- expand.grid(
+  #   sample = unique(sample_site_map$sample),
+  #   asv_id = unique(dino_high_abundance$asv_id),
+  #   stringsAsFactors = FALSE
+  # ) %>%
+  #   left_join(sample_site_map, by = "sample")
+  # 
+  # # Then join the original data and fill NAs with 0
+  # plot_data <- full_grid %>%
+  #   left_join(
+  #     rel_asvs_full %>% 
+  #       filter(asv_id %in% dino_high_abundance$asv_id) %>%
+  #       select(sample, asv_id, frac, level_4),
+  #     by = c("sample", "asv_id")
+  #   ) %>%
+  #   mutate(frac = replace_na(frac, 0)) %>%
+  #   as_tibble()
+  plot_data <- fill_up_full_hm_grid(asv_frac_per_sample)
   
   
   mx_frac <- max(plot_data$frac)
@@ -321,7 +525,7 @@ asv_overview_per_sample <- function(asv_frac_per_sample, dino_high_abundance, tr
                  1)
   }
   
-  
+  print(1)
   site_count <- rel_asvs_full %>% group_by(asv_id) %>% 
     summarise(all_sites=paste(unique(site), collapse = ";"),
               n_sites=length(unique(site)))
@@ -364,7 +568,7 @@ asv_overview_per_sample <- function(asv_frac_per_sample, dino_high_abundance, tr
   hm <- ggplot(plot_data %>%
                  mutate(asv_id = factor(asv_id, levels = asv_phylo_order)))+
     geom_tile(
-      aes(x=sample, y=asv_id, fill=as.numeric(frac)),
+      aes(x=as.character(sample_id), y=asv_id, fill=as.numeric(frac)),
       #show.legend = F
     )+
     facet_grid(~site, scales = "free_x", space = "free")+
