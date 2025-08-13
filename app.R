@@ -33,18 +33,50 @@ ui <- dashboardPage(
   
   dashboardSidebar(
     sidebarMenu(id = "tabs",  # important!
-                menuItem("Overview", tabName = "page1"),
-                menuItem("Browse samples", tabName = "page2"),
+                #menuItem("Overview", tabName = "page1"),
                 menuItem("text based search", tabName = "page3"),
-                menuItem("sequence based search", tabName = "page4")
+                menuItem("sequence based search", tabName = "page4"),
+                menuItem("Main analysis", tabName = "page2")
     )
   ),
   
   dashboardBody(
-    tabItems(
-      tabItem(tabName = "page1",
-              h2("This is Page 1"),
-              actionButton("go_to_page2", "Go to Page 2 with Plot A")
+     tabItems(
+    #   tabItem(tabName = "page1",
+    #           h2("This is Page 1"),
+    #           actionButton("go_to_page2", "Go to Page 2 with Plot A")
+    #   ),
+       tabItem(tabName = "page3",
+            h2("Search for Species/Family/Group etc. in the TREC metaB data"),
+            
+            textInput("text_input", "Enter your input text:", placeholder = "Type something here..."),
+
+            actionButton("text_submit_button", "Search"),
+            actionButton("run_analysis_button", "Analyse metaB data"),
+            actionButton("go_page3", "Analyze selected taxon"),
+            verbatimTextOutput("text_result_output"),  # for showing output of the compilation
+            
+            ui <- fluidPage(
+              titlePanel("Sampling Sites Interactive Plot (Click a Sample)"),
+              
+                mainPanel(
+                  plotlyOutput("treePlot"),
+                  plotOutput("treePlot_sec"),
+                  plotOutput("main_analysis")
+                )
+              
+            )
+            
+      ),
+      
+      tabItem(tabName = "page4",
+              h2("Compile something from text input"),
+              
+              textInput("text_input", "Enter your input text:", placeholder = "Type something here..."),
+              
+              actionButton("seq_submit_button", "Submit"),
+              
+              verbatimTextOutput("seq_result_output")  # for showing output of the compilation
       ),
       tabItem(tabName = "page2",
               h2("This is Page 2"),
@@ -53,6 +85,27 @@ ui <- dashboardPage(
                 #actionButton("export_main_ov", "Export plot"),
                 downloadButton("dl_main_plot", "Download PDF"),
                 #downloadButton("export_main_ov", "Download PDF"),
+                radioButtons(
+                  inputId = "page2_radio_choice",              # The variable name for server access
+                  label = "normalize by:",     # The text above the radio buttons
+                  choices = c("Eukaryota", "all"), # List of options
+                  selected = "Eukaryota",           # Default selected option
+                  inline = FALSE                   # TRUE puts them side-by-side
+                ),
+                radioButtons(
+                  inputId = "page2_ylab",              # The variable name for server access
+                  label = "Y axis label:",     # The text above the radio buttons
+                  choices = c("asv_id", "level_9", "level_8"), # List of options
+                  selected = "asv_id",           # Default selected option
+                  inline = FALSE                   # TRUE puts them side-by-side
+                ),
+                radioButtons(
+                  inputId = "page2_group_by",              # The variable name for server access
+                  label = "Group y-axis by:",     # The text above the radio buttons
+                  choices = c("asv_id", "level_9", "level_8"), # List of options
+                  selected = "asv_id",           # Default selected option
+                  inline = FALSE                   # TRUE puts them side-by-side
+                ),
                 titlePanel("Sampling Sites Interactive Plot (Click a Sample)"),
                 sidebarLayout(
                   sidebarPanel(
@@ -112,77 +165,49 @@ ui <- dashboardPage(
                     
                   ),
                   mainPanel(
-                    plotOutput("mainPlot"),
-                    br(),
-                    plotlyOutput("barPlot"),
-                    br(),
-                    plotOutput("secondPlot")
+                    plotOutput("mainPlot")#,
+                    # br(),
+                    # plotlyOutput("barPlot"),
+                    # br(),
+                    # plotOutput("secondPlot")
                   )
                 )
               )
               
               
       
-      ),
-      tabItem(tabName = "page3",
-            h2("Compile something from text input"),
-            
-            textInput("text_input", "Enter your input text:", placeholder = "Type something here..."),
-            radioButtons(
-              inputId = "page3_radio_choice",              # The variable name for server access
-              label = "Choose an option:",     # The text above the radio buttons
-              choices = c("Option A", "Option B", "Option C"), # List of options
-              selected = "Option B",           # Default selected option
-              inline = FALSE                   # TRUE puts them side-by-side
-            ),
-            actionButton("text_submit_button", "Submit"),
-            actionButton("run_analysis_button", "Analyse metaB data"),
-            verbatimTextOutput("text_result_output"),  # for showing output of the compilation
-            
-            ui <- fluidPage(
-              titlePanel("Sampling Sites Interactive Plot (Click a Sample)"),
-              
-                mainPanel(
-                  plotlyOutput("treePlot"),
-                  plotOutput("main_analysis")
-                )
-              
-            )
-            
-      ),
-      tabItem(tabName = "page4",
-              h2("Compile something from text input"),
-              
-              textInput("text_input", "Enter your input text:", placeholder = "Type something here..."),
-              
-              actionButton("seq_submit_button", "Submit"),
-              
-              verbatimTextOutput("seq_result_output")  # for showing output of the compilation
       )
     )
   )
 )
 
-server <- function(input, output, session) {
-  output$barPlot <- renderPlotly({
-    p <- ggplot(df_sampling_sites) +
-      geom_col(aes(
-        x = site,
-        y = count,
-        fill = .data[[input$color_by]],
-        text = paste("Sample ID:", sample_id)
-      ),
-      position = position_stack(),
-      width = 0.8) +
-      theme_minimal() +
-      labs(
-        title = paste("Samples per Site (colored by", input$color_by, ")"),
-        x = "Site", y = "Sample Count", fill = input$color_by
-      )
-    
-    ggplotly(p, tooltip = "text") %>%
-      config(displayModeBar = FALSE)  # Optional: Hide modebar
-  })
+server <- function(input, output, session) { 
+  pending_level2 <- reactiveVal(NULL)
+  selected_node <- reactiveVal(NULL)
+  holdon <- reactiveVal("stop")
+  # output$barPlot <- renderPlotly({
+  #   p <- ggplot(df_sampling_sites) +
+  #     geom_col(aes(
+  #       x = site,
+  #       y = count,
+  #       fill = .data[[input$color_by]],
+  #       text = paste("Sample ID:", sample_id)
+  #     ),
+  #     position = position_stack(),
+  #     width = 0.8) +
+  #     theme_minimal() +
+  #     labs(
+  #       title = paste("Samples per Site (colored by", input$color_by, ")"),
+  #       x = "Site", y = "Sample Count", fill = input$color_by
+  #     )
+  #   
+  #   ggplotly(p, tooltip = "text") %>%
+  #     config(displayModeBar = FALSE)  # Optional: Hide modebar
+  # })
+  
+ 
+
+  
   
   # observe({
   #   req(input$level1_filter)
@@ -211,90 +236,90 @@ server <- function(input, output, session) {
   #                     selected = "--all--")  # Forces no selection
   # })
   
-  # level_2
+  # FROM HERE code to automatically selects correct selection options for lower levels
   observe({
-    req(input$level1_filter)
-    
+    req(input$level1_filter, holdon())
+
     filtered <- df_asv_taxonomy %>%
       filter(level_1 == input$level1_filter)
-    
+
     level2_choices <- unique(filtered$level_2)
-    
+
     updateSelectInput(session, "level2_filter",
                       choices = c("--all--", level2_choices),
                       selected = "--all--")
   })
-  
+
   # level_3
   observe({
-    req(input$level2_filter)
-    
+    req(input$level2_filter, holdon())
+
     filtered <- df_asv_taxonomy %>%
       filter(level_1 == input$level1_filter) %>%
       { if (input$level2_filter != "--all--") filter(., level_2 == input$level2_filter) else . }
-    
+
     level3_choices <- unique(filtered$level_3)
-    
+
     updateSelectInput(session, "level3_filter",
                       choices = c("--all--", level3_choices),
                       selected = "--all--")
   })
-  
+
   # level_4
   observe({
-    req(input$level3_filter)
-    
+    req(input$level3_filter, holdon())
+
     filtered <- df_asv_taxonomy %>%
       filter(level_1 == input$level1_filter) %>%
       { if (input$level2_filter != "--all--") filter(., level_2 == input$level2_filter) else . } %>%
       { if (input$level3_filter != "--all--") filter(., level_3 == input$level3_filter) else . }
-    
+
     level4_choices <- unique(filtered$level_4)
-    
+
     updateSelectInput(session, "level4_filter",
                       choices = c("--all--", level4_choices),
                       selected = "--all--")
   })
-  
+
   # level_5
   observe({
-    req(input$level4_filter)
-    
+    req(input$level4_filter, holdon())
+
     filtered <- df_asv_taxonomy %>%
       filter(level_1 == input$level1_filter) %>%
       { if (input$level2_filter != "--all--") filter(., level_2 == input$level2_filter) else . } %>%
       { if (input$level3_filter != "--all--") filter(., level_3 == input$level3_filter) else . } %>%
       { if (input$level4_filter != "--all--") filter(., level_4 == input$level4_filter) else . }
-    
+
     level5_choices <- unique(filtered$level_5)
-    
+
     updateSelectInput(session, "level5_filter",
                       choices = c("--all--", level5_choices),
                       selected = "--all--")
   })
-  
+
   # level_6
   observe({
-    req(input$level5_filter)
-    
+    req(input$level5_filter, holdon())
+
     filtered <- df_asv_taxonomy %>%
       filter(level_1 == input$level1_filter) %>%
       { if (input$level2_filter != "--all--") filter(., level_2 == input$level2_filter) else . } %>%
       { if (input$level3_filter != "--all--") filter(., level_3 == input$level3_filter) else . } %>%
       { if (input$level4_filter != "--all--") filter(., level_4 == input$level4_filter) else . } %>%
       { if (input$level5_filter != "--all--") filter(., level_5 == input$level5_filter) else . }
-    
+
     level6_choices <- unique(filtered$level_6)
-    
+
     updateSelectInput(session, "level6_filter",
                       choices = c("--all--", level6_choices),
                       selected = "--all--")
   })
-  
+
   # level_7
   observe({
-    req(input$level6_filter)
-    
+    req(input$level6_filter, holdon())
+
     filtered <- df_asv_taxonomy %>%
       filter(level_1 == input$level1_filter) %>%
       { if (input$level2_filter != "--all--") filter(., level_2 == input$level2_filter) else . } %>%
@@ -302,18 +327,18 @@ server <- function(input, output, session) {
       { if (input$level4_filter != "--all--") filter(., level_4 == input$level4_filter) else . } %>%
       { if (input$level5_filter != "--all--") filter(., level_5 == input$level5_filter) else . } %>%
       { if (input$level6_filter != "--all--") filter(., level_6 == input$level6_filter) else . }
-    
+
     level7_choices <- unique(filtered$level_7)
-    
+
     updateSelectInput(session, "level7_filter",
                       choices = c("--all--", level7_choices),
                       selected = "--all--")
   })
-  
+
   # level_8
   observe({
-    req(input$level7_filter)
-    
+    req(input$level7_filter, holdon())
+
     filtered <- df_asv_taxonomy %>%
       filter(level_1 == input$level1_filter) %>%
       { if (input$level2_filter != "--all--") filter(., level_2 == input$level2_filter) else . } %>%
@@ -322,9 +347,9 @@ server <- function(input, output, session) {
       { if (input$level5_filter != "--all--") filter(., level_5 == input$level5_filter) else . } %>%
       { if (input$level6_filter != "--all--") filter(., level_6 == input$level6_filter) else . } %>%
       { if (input$level7_filter != "--all--") filter(., level_7 == input$level7_filter) else . }
-    
+
     level8_choices <- unique(filtered$level_8)
-    
+
     updateSelectInput(session, "level8_filter",
                       choices = c("--all--", level8_choices),
                       selected = "--all--")
@@ -346,7 +371,7 @@ server <- function(input, output, session) {
   # })
   
   # Step 1: Create reactiveVal without assigning yet
-  selected_node <- reactiveVal(NULL)
+  
   
   # Step 2: Update it after user submits input
   observeEvent(input$text_submit_button, {
@@ -361,29 +386,92 @@ server <- function(input, output, session) {
   output$treePlot <- renderPlotly({
     req(selected_node())
     ggplotly(
-      tree_taxo(selected_node(), df_asv_taxonomy), 
+      tree_taxo_new(selected_node(), df_asv_taxonomy), 
       tooltip = "label")
   })
+  
+  
+  # output$treePlot_sec <- renderPlotly({
+  #   req(selected_node())
+  #   ggplotly(
+  #     tree_taxo(selected_node(), df_asv_taxonomy), 
+  #     tooltip = "label")
+  # })
   
   # Step 5: Handle plotly click to update selected node
   observeEvent(event_data("plotly_click"), {
     click <- event_data("plotly_click")
+    print("click recorded")
+    print(click)
     if (!is.null(click)) {
       clicked_label <- click$key %||% click$text %||% click$customdata
+      #print(clicked_label)
       if (!is.null(clicked_label)) {
         selected_node(clicked_label)
         print(clicked_label)
         updateTextInput(session, "text_input", value = clicked_label)
-        
+        p_tree <- tree_taxo(clicked_label, df_asv_taxonomy)
+        output$treePlot_sec <- renderPlot(p_tree)
       }
     }
   })
+  
+  
+  observeEvent(input$go_page3, {
+    #pending_level2("clicked")   # <- your desired value
+    req(selected_node())
+    holdon(NULL)
+    raw <- tibble(
+      level=paste("level", 1:9, sep="_"),
+      fallback="--all--"
+    )
+    
+    inheritance <- prepare_tree_taxo_data(selected_node(), df_asv_taxonomy)
+    
+    last_level <- inheritance %>%
+      filter(taxo==selected_node()) %>%
+      pull(num_level)
+    
+    rel_data <- inheritance %>%
+      filter(num_level<=last_level)
+    
+    final_selection_update <- raw %>%
+      left_join(rel_data, by="level") %>%
+      mutate(
+        selection=case_when(is.na(taxo)~fallback,
+                            TRUE ~ taxo),
+        selection_panel_name=str_replace(level, "_", "") %>% paste0(.,"_filter")
+      ) %>%
+      select(selection, selection_panel_name, level)
+    
+    pending_level2(final_selection_update)
+    
+    updateTabsetPanel(session, "tabs", selected = "page2")
+  })
+  
+  observeEvent(input$tabs, {
+    req(input$tabs == "page2", pending_level2())
+    
+    final_selection_update <- pending_level2()
+    
+    for (i in 1:9){
+      print(final_selection_update[i,])
+      updateSelectInput(session,
+                        final_selection_update[i,]$selection_panel_name,
+                        choices = c("--all--", unique(df_asv_taxonomy[[final_selection_update[i,]$level]])),
+                        selected = final_selection_update[i,]$selection)
+    }
+    print(pending_level2())
+    
+    pending_level2(NULL)
+    #holdon("done")
+  }, ignoreInit = TRUE)
   
   ## Step 6: when analyze button is clicked - do analysis based on current node
   observeEvent(input$run_analysis_button, {
     req(input$text_input)
     query <- input$text_input
-    rel_colname <- get_highest_score_colname(input$text_input, df_asv_taxonomy)
+    rel_colname <- get_highest_score_colname(query, df_asv_taxonomy)
     
     rel_asvs <- df_asv_taxonomy %>%
       select(asv_id, rel_col=all_of(rel_colname)) %>%
@@ -395,19 +483,13 @@ server <- function(input, output, session) {
       filter(asv_id %in% rel_asvs) %>%
       left_join(df_sampling_sites, by="sample_id")
     
-    
     main_abundance_plot <- get_main_abundance_plot(asvs_per_sample, 
                                                    df_asv_taxonomy, 
-                                                   df_asv_per_sample)
-    
+                                                   df_asv_per_sample,
+                                                   norm_type=input$page2_radio_choice,
+                                                   ylab=input$page2_ylab)
     
     print(paste("running analysis on:", input$text_input))
-    
-    # #dummy_plot <- 
-    #   ggplot(asvs_per_sample,
-    #                      aes(x=as.character(sample_id), y=nreads))+
-    #     facet_grid("x"~site, scales = "free_x", space = "free")+
-    #   geom_col(position="stack")
     
     output$main_analysis <- renderPlot({
       
@@ -454,7 +536,7 @@ server <- function(input, output, session) {
       input$level8_filter
     )
     
-    #level_inputs <- c("Eukaryota", "--all--", "--all--", "--all--", "--all--", "--all--", "--all--", "--all--")
+    #level_inputs <- c("Eukaryota", "--all--", "--all--", "--all--", "--all--", "--all--", "--all--", "Heterocapsa")
     
     df_filtered <- select_taxo_level(level_inputs, df_asv_per_sample)
     
@@ -469,18 +551,23 @@ server <- function(input, output, session) {
     
     print("building main plot")
     print(asvs_per_sample)
-    p3 <- get_main_abundance_plot(asvs_per_sample, 
+    p3_raw <- get_main_abundance_plot(asvs_per_sample, 
                                   df_asv_taxonomy, 
-                                  df_asv_per_sample)
+                                  df_asv_per_sample,
+                                  input$page2_radio_choice,
+                                  ylab=input$page2_ylab,
+                                  grouping=input$page2_group_by)
+    
     output$mainPlot <- renderPlot({
       
-      p3 
+      p3_raw[[1]] 
       
     })
-    stopifnot(inherits(p3, "ggplot"))  # helpful during dev
-    main_plot(p3)
-    main_plot_nrows(length(rel_asvs))
+    stopifnot(inherits(p3_raw[[1]], "ggplot"))  # helpful during dev
+    main_plot(p3_raw[[1]])
+    main_plot_nrows(p3_raw[[2]])
     main_plot_nsamples(nrow(df_sampling_sites))
+    #holdon("done")
     #global_env$main_plot <- p3
     
   })
@@ -548,42 +635,42 @@ server <- function(input, output, session) {
   })
   
   # Second plot: example (taxonomy for clicked sample)
-  output$secondPlot <- renderPlot({
-    click <- event_data("plotly_click")
-    if (is.null(click)) return(NULL)
-    
-    idx <- click$pointNumber + 1
-    selected_sample <- df_sampling_sites$sample_id[idx]
-    
-    print(selected_sample)
-    
-    level_inputs <- c(
-      input$level1_filter,
-      input$level2_filter,
-      input$level3_filter,
-      input$level4_filter,
-      input$level5_filter,
-      input$level6_filter,
-      input$level7_filter,
-      input$level8_filter
-    )
-    
-    df_filtered <- select_taxo_level(level_inputs, df_asv_per_sample)
-    
-    
-    # Example plot: count by size_fraction for selected site
-    p2 <- ggplot(df_filtered) +
-      geom_col(aes(y = col_x, x=nreads, fill = col_fill), show.legend=F) +
-      theme_minimal() +
-      labs(
-        title = paste("Size Fractions for Site:", selected_sample),
-        x = "Size Fraction", y = "Count"
-      )
-    p2
-    
-    
-    
-  })
+  # output$secondPlot <- renderPlot({
+  #   click <- event_data("plotly_click")
+  #   if (is.null(click)) return(NULL)
+  #   
+  #   idx <- click$pointNumber + 1
+  #   selected_sample <- df_sampling_sites$sample_id[idx]
+  #   
+  #   print(selected_sample)
+  #   
+  #   level_inputs <- c(
+  #     input$level1_filter,
+  #     input$level2_filter,
+  #     input$level3_filter,
+  #     input$level4_filter,
+  #     input$level5_filter,
+  #     input$level6_filter,
+  #     input$level7_filter,
+  #     input$level8_filter
+  #   )
+  #   
+  #   df_filtered <- select_taxo_level(level_inputs, df_asv_per_sample)
+  #   
+  #   
+  #   # Example plot: count by size_fraction for selected site
+  #   p2 <- ggplot(df_filtered) +
+  #     geom_col(aes(y = col_x, x=nreads, fill = col_fill), show.legend=F) +
+  #     theme_minimal() +
+  #     labs(
+  #       title = paste("Size Fractions for Site:", selected_sample),
+  #       x = "Size Fraction", y = "Count"
+  #     )
+  #   p2
+  #   
+  #   
+  #   
+  # })
 }
 
 shinyApp(ui, server)

@@ -10,33 +10,30 @@ europe_ov_plot <- function(query){
 }
 
 
-get_highest_score_per_level <- function(query, df_asv_taxonomy){
+get_highest_score_per_level <- function(query, df_asv_taxonomy, highest=1){
   
-  hit_per_level <- df_asv_taxonomy %>% select(starts_with("level_")) %>%
-    #.[1:20,] %>%
-    apply(., 2, function(TAXO){
-      #print(TAXO)
-      #print("\n\n")
-      #print(unique(TAXO))
-      full_list <- unique(TAXO) %>% as.character()
-      
-      #print(full_list)
-      
-      distances <- stringdist::stringdist(query, full_list, method = "jw")
-      
-      #print(distances)
-      
-      hit <- full_list[which(distances==min(distances, na.rm=T))]
-      
-      #print(hit)
-      
-      return(tibble(hit=hit, score=min(distances, na.rm=T)))
-      
-    }) %>%
+  level_cols <- df_asv_taxonomy %>% select(starts_with("level_"))
+  
+  hit_per_level <- lapply(names(level_cols), function(COLNAME){
+    
+    #print(level_cols[[COLNAME]])
+    
+    full_list <- level_cols[[COLNAME]] %>% unique() %>% as.character() 
+    
+    distances <- tibble(entry=full_list,
+                        score=stringdist::stringdist(query, full_list, method = "jw"))
+    
+    hit <- distances %>%
+        arrange(score) %>%
+        .[1:highest,] %>%
+      mutate(level=COLNAME)
+    
+    return(hit)
+  }) %>%
     bind_rows()
   
   return(hit_per_level)
-  
+
 }
 
 
@@ -50,23 +47,30 @@ get_highest_score_colname <- function(query, df_asv_taxonomy){
   
 }
 
+tree_taxo_new <- function(query, df_asv_taxonomy){
+  hit_per_level <- get_highest_score_per_level(query, df_asv_taxonomy, 3)
 
-tree_taxo <- function(query, df_asv_taxonomy){
-  
-  
-  # target_list <- df_asv_taxonomy %>% select(starts_with("level_")) %>%
-  #   as.character() %>% unique()
-  # 
-  # 
- # test_mat <- matrix(target_list, nrow=4)
+
+  p_text_hits <- ggplot(hit_per_level)+
+    geom_text(
+      aes(x=level, y=-score, label=entry, key=entry)
+    )
+
+  return(p_text_hits)
+}
+
+
+prepare_tree_taxo_data <- function(query, df_asv_taxonomy){
   
   hit_per_level <- get_highest_score_per_level(query, df_asv_taxonomy)
   
-  rel_col <- which(hit_per_level$score==min(hit_per_level$score))
+  rel <- hit_per_level[which(hit_per_level$score==min(hit_per_level$score)),]
   
-  colname <- paste0("level_", rel_col)
-  hit <- hit_per_level[which(hit_per_level$score==min(hit_per_level$score)),]$hit
- 
+  rel_col <- rel$level %>% str_split("_") %>% map_chr(.,2) %>% as.numeric()
+  
+  colname <- rel$level
+  hit <- rel$entry
+  
   
   sel_cols <- paste0("level_", seq(1, rel_col+1))
   
@@ -80,6 +84,46 @@ tree_taxo <- function(query, df_asv_taxonomy){
     unique() %>%
     group_by(num_level) %>%
     mutate(ypos_raw=seq(1,length(num_level))) 
+  
+  return(plot_data_raw)
+  
+}
+
+
+tree_taxo <- function(query, df_asv_taxonomy){
+  
+  
+  # target_list <- df_asv_taxonomy %>% select(starts_with("level_")) %>%
+  #   as.character() %>% unique()
+  # 
+  # 
+ # test_mat <- matrix(target_list, nrow=4)
+  
+  # hit_per_level <- get_highest_score_per_level(query, df_asv_taxonomy)
+  # 
+  # rel <- hit_per_level[which(hit_per_level$score==min(hit_per_level$score)),]
+  # 
+  # rel_col <- rel$level %>% str_split("_") %>% map_chr(.,2) %>% as.numeric()
+  # 
+  # colname <- rel$level
+  # hit <- rel$entry
+  # 
+  # 
+  # sel_cols <- paste0("level_", seq(1, rel_col+1))
+  # 
+  # plot_data_raw <- 
+  #   df_asv_taxonomy %>%
+  #   filter(select(., all_of(colname))==hit) %>%
+  #   select(all_of(sel_cols)) %>%
+  #   unique()%>%
+  #   pivot_longer(cols=names(.), names_to = "level", values_to = "taxo") %>%
+  #   mutate(num_level=str_replace(level, "level_", "") %>% as.numeric()) %>%
+  #   unique() %>%
+  #   group_by(num_level) %>%
+  #   mutate(ypos_raw=seq(1,length(num_level))) 
+  
+  plot_data_raw <- prepare_tree_taxo_data(query, df_asv_taxonomy)
+  #print(plot_data_raw)
   
   plot_data <- plot_data_raw %>%
     left_join(
@@ -299,7 +343,7 @@ fill_up_full_hm_grid <- function(asvs_per_sample_frac){
 
 select_taxo_level <- function(level_inputs, df_asv_per_sample, selected_sample=NULL){
   
-  first_non_selected_level <- min(which(level_inputs=="--all--"))
+  first_non_selected_level <- min(c(which(level_inputs=="--all--"),9))
   print(paste("levels:", first_non_selected_level))
   # Dummy plot showing taxa counts (replace with real logic if needed)
   if(is.null(selected_sample)){
@@ -332,37 +376,117 @@ select_taxo_level <- function(level_inputs, df_asv_per_sample, selected_sample=N
 }
 
 
-get_main_abundance_plot <- function(asvs_per_sample, df_asv_taxonomy, df_asv_per_sample, norm_type="Eukaryota"){
-
+get_main_abundance_plot <- function(asvs_per_sample, df_asv_taxonomy, df_asv_per_sample, 
+                                    norm_type="Eukaryota", ylab_in="asv_id", grouping="asv_id"){
+  mx_frac <- 1
+  legend_scale <- c(0,0.01,0.5,round(mx_frac*20)/20)
+  
+  
+  color_vec <- c("black","blue4","blue3","darkcyan","green4","green","yellow4","yellow","pink", "deeppink")
+  val_vec <- c(0,
+               0.001/mx_frac,
+               0.0099/mx_frac,
+               0.01/mx_frac,
+               0.0999/mx_frac,
+               0.25/mx_frac,
+               0.4999/mx_frac,
+               0.5/mx_frac,
+               0.74999/mx_frac,
+               0.75/mx_frac,
+               1)
   
   asvs_to_norm <- df_asv_taxonomy %>%
     filter(level_1==norm_type) %>%
     pull(asv_id)
+  
+  tot_sample <- df_asv_per_sample %>%
+    filter(asv_id %in% asvs_to_norm)%>%
+    group_by(sample_id) %>%
+    summarize(
+      to_norm_reads=sum(nreads)
+    )
+  
   print(1)
   summed_barplot_data <- asvs_per_sample %>%
     group_by(sample_id) %>%
     summarize(
       tot_reads=sum(nreads),
       site=unique(site)
-    ) #%>%
-    # left_join(
-    #   df_asv_per_sample %>%
-    #     filter(asv_id %in% asvs_to_norm),
-    #   by="asv_id"
-    # )
+    ) %>%
+    left_join(
+      tot_sample, by="sample_id"
+    ) %>%
+    mutate(
+      frac=tot_reads/to_norm_reads
+    )
+  
+  
+  # export_priorities <- summed_barplot_data  %>%
+  #   arrange(site, desc(frac)) %>%
+  #   group_by(site) %>%
+  #   mutate(
+  #     priority=c(1:length(site))
+  #   ) %>%
+  #   filter(
+  #     priority<=5
+  #   ) %>%
+  #   left_join(df_sampling_sites %>% select(sample_id, date, time, size_fraction))
+  #   
+  # write_tsv(export_priorities, file="/home/rheinnec/export_priorities.tsv")
+  # 
+  # 
   print(2)
   bar_sumplot <- ggplot(summed_barplot_data,
-         aes(x=as.character(sample_id), y=tot_reads))+
+         aes(x=as.character(sample_id), y=tot_reads, fill=frac))+
     facet_grid(~site, scales = "free_x", space = "free")+
     geom_col()+
+    scale_fill_gradientn(
+      # name="abundance [%]",
+      # values=val_vec,
+      # breaks=legend_scale,
+      #labels=paste(legend_scale*100),
+      colors = color_vec
+    )+
     theme_bw()+
     theme(
-      axis.text.x = element_blank(),
+          axis.text.x = element_text(angle = 270, hjust=0.5, vjust=0.5),
+        
       axis.ticks.x = element_blank(),
       axis.title.x = element_blank()
     )
   print(3)
-  asvs_per_sample_frac <- asvs_per_sample %>%
+  if(grouping=="asv_id"){
+    pregrouped <- asvs_per_sample
+  } else if(grouping=="level_9"){
+    pregrouped <- asvs_per_sample %>%
+      select(asv_id, sample_id, nreads, site) %>%
+      left_join(df_asv_taxonomy) %>%
+      group_by(sample_id, level_9) %>%
+      summarize(
+        nreads=sum(nreads),
+        site=unique(site),
+        
+        #sample_id=sample_id
+      ) %>%
+      ungroup() %>%
+      mutate(asv_id=level_9)
+  } else if(grouping=="level_8"){
+    pregrouped <- asvs_per_sample %>%
+      select(asv_id, sample_id, nreads, site) %>%
+      left_join(df_asv_taxonomy) %>%
+      group_by(sample_id,level_8) %>%
+      summarize(
+        nreads=sum(nreads),
+        site=unique(site),
+        
+        #sample_id=unique(sample_id)
+      )%>%
+      ungroup()%>%
+      mutate(asv_id=level_8)
+  }
+  
+  
+  asvs_per_sample_frac <- pregrouped %>%
     group_by(sample_id) %>%
     mutate(tot_sample_reads=sum(nreads)) %>%
     rowwise() %>%
@@ -373,34 +497,13 @@ get_main_abundance_plot <- function(asvs_per_sample, df_asv_taxonomy, df_asv_per
   print(4)
   plot_data <- fill_up_full_hm_grid(asvs_per_sample_frac)
   
-  
-  
-  mx_frac <- max(plot_data$frac)
-  
-  legend_scale <- c(0,0.01,0.5,round(mx_frac*20)/20)
-  
-  
-  color_vec <- c("black","blue4","blue3","darkcyan","green4","green","yellow4","yellow")
-  val_vec <- c(0,
-               0.001/mx_frac,
-               0.0099/mx_frac,
-               0.01/mx_frac,
-               0.0999/mx_frac,
-               # 0.1/mx_frac,
-               # 0.1999/mx_frac,
-               0.2/mx_frac,
-               0.4999/mx_frac,
-               0.5/mx_frac,
-               1)
-  
-  
-  taxo_level <- "level_9"
-  
   print(5)
   ylabs <- plot_data %>%
-    left_join(df_asv_taxonomy, by="asv_id") %>%
-    select(asv_id, ylab=all_of(taxo_level))
+    left_join(df_asv_taxonomy, by="asv_id")
 
+
+  ylabs$ylab <- ylabs[[ylab_in]]
+  
   print(6)
   hm <- 
     ggplot(plot_data# %>%
@@ -440,12 +543,12 @@ get_main_abundance_plot <- function(asvs_per_sample, df_asv_taxonomy, df_asv_per
     ncol=1,
     align = "v",
     axis = "lr",
-    rel_heights=c(1,0.05*length(unique(asvs_per_sample$asv_id)))
+    rel_heights=c(1,max(c(2, 0.05*length(unique(pregrouped$asv_id)))))
   )
   
   print("plot fully created... returning to main script")
   
-  return(combined_plot)
+  return(list(combined_plot, nrows=max(c(length(unique(pregrouped$asv_id)), 30))))
   
 }
 
