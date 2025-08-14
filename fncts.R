@@ -452,18 +452,18 @@ get_main_abundance_plot <- function(asvs_per_sample, df_asv_taxonomy, df_asv_per
     )
   
   
-  # export_priorities <- summed_barplot_data  %>%
-  #   arrange(site, desc(frac)) %>%
-  #   group_by(site) %>%
-  #   mutate(
-  #     priority=c(1:length(site))
-  #   ) %>%
-  #   filter(
-  #     priority<=5
-  #   ) %>%
-  #   left_join(df_sampling_sites %>% select(sample_id, date, time, size_fraction))
-  #   
-  # write_tsv(export_priorities, file="/home/rheinnec/export_priorities.tsv")
+   export_priorities <- summed_barplot_data  %>%
+     arrange(site, desc(frac)) %>%
+     group_by(site) %>%
+     mutate(
+       priority=c(1:length(site))
+     ) %>%
+     filter(
+       priority<=500
+     ) %>%
+     left_join(df_sampling_sites %>% select(sample_id, date, time, size_fraction))
+     
+   write_tsv(export_priorities, file="/home/rheinnec/export_priorities.tsv")
   # 
   # 
   print(2)
@@ -514,6 +514,32 @@ get_main_abundance_plot <- function(asvs_per_sample, df_asv_taxonomy, df_asv_per
       )%>%
       ungroup()%>%
       mutate(asv_id=level_8)
+  } else if(grouping=="level_7"){
+    pregrouped <- asvs_per_sample %>%
+      select(asv_id, sample_id, nreads, site) %>%
+      left_join(df_asv_taxonomy) %>%
+      group_by(sample_id,level_7) %>%
+      summarize(
+        nreads=sum(nreads),
+        site=unique(site),
+        
+        #sample_id=unique(sample_id)
+      )%>%
+      ungroup()%>%
+      mutate(asv_id=level_7)
+  } else if(grouping=="level_6"){
+    pregrouped <- asvs_per_sample %>%
+      select(asv_id, sample_id, nreads, site) %>%
+      left_join(df_asv_taxonomy) %>%
+      group_by(sample_id,level_6) %>%
+      summarize(
+        nreads=sum(nreads),
+        site=unique(site),
+        
+        #sample_id=unique(sample_id)
+      )%>%
+      ungroup()%>%
+      mutate(asv_id=level_6)
   }
   
   

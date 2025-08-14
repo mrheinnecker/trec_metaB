@@ -102,7 +102,7 @@ ui <- dashboardPage(
                 radioButtons(
                   inputId = "page2_group_by",              # The variable name for server access
                   label = "Group y-axis by:",     # The text above the radio buttons
-                  choices = c("asv_id", "level_9", "level_8"), # List of options
+                  choices = c("asv_id", "level_9", "level_8", "level_7", "level_6"), # List of options
                   selected = "asv_id",           # Default selected option
                   inline = FALSE                   # TRUE puts them side-by-side
                 ),
