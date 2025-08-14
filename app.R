@@ -47,7 +47,7 @@ ui <- dashboardPage(
     #           actionButton("go_to_page2", "Go to Page 2 with Plot A")
     #   ),
        tabItem(tabName = "page3",
-            h2("Search for Species/Family/Group etc. in the TREC metaB data"),
+            h2("Search for Species/Genus/Family etc. in the TREC metaB data"),
             
             textInput("text_input", "Enter your input text:", placeholder = "Type something here..."),
 
@@ -57,7 +57,7 @@ ui <- dashboardPage(
             verbatimTextOutput("text_result_output"),  # for showing output of the compilation
             
             ui <- fluidPage(
-              titlePanel("Sampling Sites Interactive Plot (Click a Sample)"),
+              titlePanel("click on text of search result and proceed with button: Analyze selected taxon"),
               
                 mainPanel(
                   plotlyOutput("treePlot"),

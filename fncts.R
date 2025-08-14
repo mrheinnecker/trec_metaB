@@ -9,6 +9,28 @@ europe_ov_plot <- function(query){
   
 }
 
+taxonomy_mapping <- function(){
+  
+  return(
+    tibble(
+      level=paste0("level_", 1:9),
+      pr2_taxonomy_levels = c(
+        "Domain",
+        "Supergroup",
+        "Division",
+        "Subdivision",
+        "Class",
+        "Order",
+        "Family",
+        "Genus",
+        "Species"
+      )
+      
+    )
+  )
+  
+}
+
 
 get_highest_score_per_level <- function(query, df_asv_taxonomy, highest=1){
   
@@ -54,7 +76,16 @@ tree_taxo_new <- function(query, df_asv_taxonomy){
   p_text_hits <- ggplot(hit_per_level)+
     geom_text(
       aes(x=level, y=-score, label=entry, key=entry)
-    )
+    )+
+    scale_x_discrete(breaks=taxonomy_mapping() %>% pull(level),
+                     labels=taxonomy_mapping() %>% pull(pr2_taxonomy_levels))+
+    
+    theme_bw()+
+    theme(
+      axis.text.x = element_text(angle=315),
+      axis.text.y = element_blank()
+    )+
+    ylab("similarity")
 
   return(p_text_hits)
 }
